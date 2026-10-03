@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+test.env
+*.log
+.vscode/
+.idea/
+logs/
+recordings/
+_backup_1phong/
+data/

@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a0b10">
+  <title>Kaynt LiveHub · Live Observer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='vendor/mpegts.js') }}"></script>
+</head>
+<body>
+
+<!-- ======================== Bộ icon (Lucide, stroke 2) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-radio" viewBox="0 0 24 24"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-msg" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+    <symbol id="i-gem" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></symbol>
+    <symbol id="i-gift" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.5 3 11 5 12 8c1-3 2.5-5 4.5-5a2.5 2.5 0 0 1 0 5"/></symbol>
+    <symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4"/><path d="m15.4 6.5-6.8 4"/></symbol>
+    <symbol id="i-login" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3.9v16.2a1 1 0 0 0 1.5.86l13.2-8.1a1 1 0 0 0 0-1.72L7.5 3.04A1 1 0 0 0 6 3.9Z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+    <symbol id="i-rec" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5Z"/><path d="m22 9-6 6"/><path d="m16 9 6 6"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5Z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.4 5.6a9 9 0 0 1 0 12.7"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M12 20h.01"/><path d="M2 8.8a15 15 0 0 1 20 0"/><path d="M5 12.9a10 10 0 0 1 14 0"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.7V17c0 .6-.5 1-1 1.2C7.9 18.8 7 20.2 7 22"/><path d="M14 14.7V17c0 .6.5 1 1 1.2 1.1.6 2 2 2 3.8"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1Z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="m2 2 20 20"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-medal" viewBox="0 0 24 24"><path d="M7.2 2h9.6L14 9H10Z"/><circle cx="12" cy="15" r="6"/><path d="M12 12v6"/></symbol>
+  </defs>
+</svg>
+
+<a class="skip" href="#main">Bỏ qua tới nội dung chính</a>
+
+<div class="app">
+  <!-- ======================== Thanh bên -->
+  <aside class="side" aria-label="Điều hướng">
+    <div class="brand">
+      <span class="logo"><svg class="ic"><use href="#i-radio"/></svg></span>
+      <div class="brand-txt"><b>Kaynt LiveHub</b><span>Live Observer</span></div>
+    </div>
+
+    <form id="addForm" class="add" autocomplete="off">
+      <label for="uid" class="lbl">Thêm phòng live</label>
+      <div class="add-row">
+        <div class="field">
+          <svg class="ic"><use href="#i-search"/></svg>
+          <input id="uid" placeholder="@username hoặc link live" required aria-describedby="uidHelp">
+        </div>
+        <button type="submit" class="btn primary icon-only" aria-label="Thêm phòng" title="Thêm phòng"><svg class="ic"><use href="#i-plus"/></svg></button>
+      </div>
+      <p id="uidHelp" class="help">Nhiều phòng: cách nhau bằng dấu phẩy</p>
+      <div class="opts">
+        <label class="switch"><input type="checkbox" id="autoRe" checked><span></span>Tự kết nối lại</label>
+      </div>
+    </form>
+
+    <div class="runbar">
+      <button id="btnStartAll" class="btn go" type="button"><svg class="ic"><use href="#i-play"/></svg><span>Bắt đầu</span></button>
+      <button id="btnStopAll" class="stop-lite" type="button" hidden title="Ngắt kết nối tất cả phòng (sẽ hỏi lại trước khi dừng)"><svg class="ic"><use href="#i-power"/></svg><span>Dừng tất cả phòng…</span></button>
+    </div>
+
+    <nav id="tabs" class="nav">
+      <button class="tab all on" data-room="">
+        <svg class="ic"><use href="#i-grid"/></svg>
+        <span class="tname">Tất cả phòng</span>
+        <span class="count" id="roomCount">0</span>
+      </button>
+      <div class="nav-label">Đang theo dõi</div>
+      <div id="roomTabs" class="room-list"></div>
+    </nav>
+
+    <div class="side-foot">
+      <div id="summary" class="summary">0 phòng</div>
+    </div>
+  </aside>
+
+  <!-- ======================== Nội dung -->
+  <div class="content" id="main" tabindex="-1">
+
+    <!-- Tab "Tất cả": lưới -->
+    <main id="viewAll" class="view">
+      <header class="view-head">
+        <div>
+          <h1>Tất cả phòng</h1>
+          <p class="sub">Xem nhanh video, số liệu và bình luận mới nhất của mọi phòng</p>
+        </div>
+        <div class="view-tools">
+          <label class="switch"><input type="checkbox" id="wallVideo" checked><span></span>Video trong lưới</label>
+          <label class="sel"><span>Chất lượng</span>
+            <select id="wallQuality">
+              <option value="low">Thấp · tiết kiệm mạng</option>
+              <option value="mid">Vừa</option>
+              <option value="high">Cao</option>
+            </select>
+          </label>
+        </div>
+      </header>
+      <div id="wall" class="wall"></div>
+      <div id="wallEmpty" class="empty-state">
+        <span class="es-ic"><svg class="ic"><use href="#i-radio"/></svg></span>
+        <h2>Chưa có phòng nào</h2>
+        <p>Nhập <b>@username</b> ở ô <b>Thêm phòng live</b> bên trái (hoặc phía trên trên điện thoại) để bắt đầu theo dõi.</p>
+      </div>
+    </main>
+
+    <!-- Tab một phòng -->
+    <main id="viewRoom" class="view room-view" hidden>
+      <section class="hero card">
+        <img id="roomAvatar" class="avatar hero-av" alt="">
+        <div class="hero-meta">
+          <div class="hero-top"><h1 id="roomName">—</h1><span id="status" class="chip idle">Chưa kết nối</span></div>
+          <p id="roomTitle" class="sub">—</p>
+        </div>
+        <div class="hero-uptime"><span>Đã theo dõi</span><b id="uptime">00:00:00</b></div>
+        <div class="hero-actions">
+          <button class="btn" id="btnReconnect"><svg class="ic"><use href="#i-refresh"/></svg>Kết nối lại</button>
+          <button class="btn" id="btnDisconnect"><svg class="ic"><use href="#i-power"/></svg>Ngắt</button>
+          <button class="btn danger" id="btnClose"><svg class="ic"><use href="#i-x"/></svg>Đóng phòng</button>
+        </div>
+      </section>
+
+      <section class="col-video">
+        <div class="card video-card">
+          <div class="video-wrap">
+            <video id="video" muted playsinline controls></video>
+            <div id="videoEmpty" class="video-empty">Video sẽ hiện ở đây khi đã kết nối</div>
+          </div>
+          <div class="video-bar">
+            <label class="sel compact"><span class="sr">Chất lượng video</span><select id="quality"></select></label>
+            <button class="btn icon-only" id="btnPlay" aria-label="Xem video" title="Xem video"><svg class="ic"><use href="#i-play"/></svg></button>
+            <button class="btn icon-only" id="btnStopVideo" aria-label="Tắt video" title="Tắt video"><svg class="ic"><use href="#i-stop"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="col-main">
+        <div class="stats">
+          <div class="stat s-cyan"><span class="st-ic"><svg class="ic"><use href="#i-eye"/></svg></span><span class="st-l">Đang xem</span><b id="s-viewers">0</b><small>đỉnh <i id="s-peak">0</i></small></div>
+          <div class="stat s-blue"><span class="st-ic"><svg class="ic"><use href="#i-msg"/></svg></span><span class="st-l">Bình luận</span><b id="s-comments">0</b><small>&nbsp;</small></div>
+          <div class="stat s-gold"><span class="st-ic"><svg class="ic"><use href="#i-gem"/></svg></span><span class="st-l">Kim cương</span><b id="s-diamonds">0</b><small><i id="s-gifts">0</i> quà</small></div>
+          <div class="stat s-pink"><span class="st-ic"><svg class="ic"><use href="#i-heart"/></svg></span><span class="st-l">Lượt thích</span><b id="s-likes">0</b><small>cả phiên <i id="s-likesTotal">0</i></small></div>
+          <div class="stat s-green"><span class="st-ic"><svg class="ic"><use href="#i-login"/></svg></span><span class="st-l">Vào phòng</span><b id="s-joins">0</b><small>&nbsp;</small></div>
+          <div class="stat s-violet"><span class="st-ic"><svg class="ic"><use href="#i-user-plus"/></svg></span><span class="st-l">Theo dõi / Chia sẻ</span><b><i id="s-follows">0</i><em>/</em><i id="s-shares">0</i></b><small>&nbsp;</small></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2><svg class="ic"><use href="#i-trophy"/></svg>Bảng xếp hạng</h2>
+            <div class="seg" id="topTabs" role="tablist">
+              <button data-t="live" class="on" title="Bảng xếp hạng TikTok đang hiển thị trong phòng live (cập nhật liên tục)">Hiện tại</button>
+              <button data-t="gifters" title="Tổng kim cương tặng từ lúc bắt đầu theo dõi">Tặng quà</button>
+            </div>
+          </div>
+          <p id="topNote" class="top-note"></p>
+          <ol id="topList" class="top"></ol>
+        </div>
+      </section>
+
+      <section class="col-feed">
+        <div class="card feed-card">
+          <div class="card-head">
+            <h2><span class="live-dot"></span>Hoạt động trực tiếp</h2>
+            <label class="switch small"><input type="checkbox" id="autoScroll" checked><span></span>Tự cuộn</label>
+          </div>
+          <div class="filters" id="filters" aria-label="Lọc loại hoạt động">
+            <button data-k="comment" class="on"><svg class="ic"><use href="#i-msg"/></svg>Bình luận</button>
+            <button data-k="gift" class="on"><svg class="ic"><use href="#i-gift"/></svg>Quà</button>
+            <button data-k="follow" class="on"><svg class="ic"><use href="#i-user-plus"/></svg>Theo dõi</button>
+            <button data-k="share" class="on"><svg class="ic"><use href="#i-share"/></svg>Chia sẻ</button>
+            <button data-k="barrage" class="on" title="Người level cao / fan club vào phòng có hiệu ứng, lên level, đăng ký…"><svg class="ic"><use href="#i-star"/></svg>Bay vào</button>
+            <button data-k="join"><svg class="ic"><use href="#i-login"/></svg>Vào phòng</button>
+            <button data-k="like"><svg class="ic"><use href="#i-heart"/></svg>Thích</button>
+            <button data-k="system" class="on"><svg class="ic"><use href="#i-info"/></svg>Hệ thống</button>
+          </div>
+          <div class="field search-field">
+            <svg class="ic"><use href="#i-search"/></svg>
+            <input id="search" type="search" placeholder="Lọc theo tên, @id hoặc nội dung" aria-label="Lọc hoạt động">
+          </div>
+          <ul id="feed" class="feed" aria-live="off"></ul>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div id="userCard" class="ucard" hidden role="dialog" aria-label="Thông tin người xem"></div>
+
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

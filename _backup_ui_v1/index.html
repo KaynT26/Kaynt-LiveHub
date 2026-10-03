@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kaynt · Live Observer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='badges.css') }}">
+  <script src="{{ url_for('static', filename='vendor/mpegts.js') }}"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="dot"></span>Kaynt <b>Live Observer</b></div>
+  <form id="addForm" class="connect">
+    <input id="uid" placeholder="@username hoặc link… (nhiều phòng: cách nhau bằng dấu phẩy)" autocomplete="off" required>
+    <label class="chk"><input type="checkbox" id="autoRe" checked> Tự kết nối lại</label>
+    <label class="chk" id="autoRecWrap"><input type="checkbox" id="autoRec"> Tự ghi hình</label>
+    <button type="submit" class="btn primary">+ Thêm phòng</button>
+  </form>
+  <button id="lanPill" class="pill idle sess" type="button" hidden>📶 WiFi</button>
+  <button id="signPill" class="pill idle sess" type="button">🔑 API key</button>
+  <button id="sessionPill" class="pill idle sess" type="button" title="Bấm để đọc lại cấu hình sessionid trong .env">🔓 sessionid</button>
+  <div id="summary" class="pill idle">0 phòng</div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab on" data-room="">▦ Tất cả <span class="count" id="roomCount">0</span></button>
+  <span id="roomTabs" class="room-tabs"></span>
+</nav>
+
+<!-- ======================== Tab "Tất cả": lưới các phòng -->
+<main id="viewAll" class="wall-view">
+  <div class="wall-bar">
+    <label class="chk"><input type="checkbox" id="wallVideo" checked> Phát video trong lưới</label>
+    <label class="chk">Chất lượng
+      <select id="wallQuality">
+        <option value="low">Thấp (tiết kiệm mạng)</option>
+        <option value="mid">Vừa</option>
+        <option value="high">Cao</option>
+      </select>
+    </label>
+    <span class="spacer"></span>
+    <span id="ffmpegWarn" class="muted small" hidden>⚠ Chưa có ffmpeg → không ghi hình được</span>
+  </div>
+  <div id="wall" class="wall"></div>
+  <div id="wallEmpty" class="empty big">Chưa có phòng nào. Nhập <b>@username</b> ở trên rồi bấm <b>+ Thêm phòng</b>.</div>
+</main>
+
+<!-- ======================== Tab một phòng: chi tiết -->
+<main id="viewRoom" class="grid" hidden>
+  <section class="col-left">
+    <div class="card room">
+      <img id="roomAvatar" class="avatar lg" alt="">
+      <div class="room-meta">
+        <div id="roomName" class="room-name">—</div>
+        <div id="roomTitle" class="muted">—</div>
+        <div class="room-actions">
+          <span id="status" class="pill idle">Chưa kết nối</span>
+          <button class="btn sm" id="btnReconnect">↻ Kết nối lại</button>
+          <button class="btn sm" id="btnDisconnect">Ngắt</button>
+          <button class="btn sm danger" id="btnClose">✕ Đóng phòng</button>
+        </div>
+      </div>
+      <div class="room-uptime"><span class="muted">Đã theo dõi</span><b id="uptime">00:00:00</b></div>
+    </div>
+
+    <div class="card video-card">
+      <div class="video-wrap">
+        <video id="video" muted playsinline controls></video>
+        <div id="videoEmpty" class="video-empty">Video sẽ hiện ở đây khi đã kết nối</div>
+      </div>
+      <div class="video-bar">
+        <select id="quality"></select>
+        <button class="btn sm" id="btnPlay">▶ Xem video</button>
+        <button class="btn sm" id="btnStopVideo">■ Tắt video</button>
+        <span class="spacer"></span>
+        <label class="chk small"><input type="checkbox" id="roomAutoRec"> Tự ghi khi kết nối</label>
+        <button class="btn sm rec" id="btnRec">● Ghi hình</button>
+        <span id="recInfo" class="muted small"></span>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span>Đang xem</span><b id="s-viewers">0</b><small>đỉnh <i id="s-peak">0</i></small></div>
+      <div class="stat"><span>Bình luận</span><b id="s-comments">0</b></div>
+      <div class="stat"><span>Kim cương</span><b id="s-diamonds">0</b><small><i id="s-gifts">0</i> quà</small></div>
+      <div class="stat"><span>Lượt thích</span><b id="s-likes">0</b><small>cả phiên <i id="s-likesTotal">0</i></small></div>
+      <div class="stat"><span>Vào phòng</span><b id="s-joins">0</b></div>
+      <div class="stat"><span>Theo dõi / Chia sẻ</span><b><i id="s-follows">0</i> / <i id="s-shares">0</i></b></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>Diễn biến</h3>
+        <div class="seg" id="chartMetric">
+          <button data-m="viewers" class="on">Người xem</button>
+          <button data-m="comments">Bình luận/10s</button>
+          <button data-m="likes">Tim/10s</button>
+          <button data-m="diamonds">Kim cương/10s</button>
+        </div>
+      </div>
+      <canvas id="chart" height="160"></canvas>
+    </div>
+  </section>
+
+  <section class="col-right">
+    <div class="card feed-card">
+      <div class="card-head">
+        <h3>Hoạt động trực tiếp</h3>
+        <label class="chk small"><input type="checkbox" id="autoScroll" checked> Tự cuộn</label>
+      </div>
+      <div class="filters" id="filters">
+        <button data-k="comment" class="on">💬 Bình luận</button>
+        <button data-k="gift" class="on">🎁 Quà</button>
+        <button data-k="follow" class="on">➕ Theo dõi</button>
+        <button data-k="share" class="on">↗ Chia sẻ</button>
+        <button data-k="join">👋 Vào phòng</button>
+        <button data-k="like">❤ Thích</button>
+        <button data-k="system" class="on">⚙ Hệ thống</button>
+      </div>
+      <input id="search" class="search" placeholder="Lọc theo tên hoặc nội dung…">
+      <ul id="feed" class="feed"></ul>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="seg" id="topTabs">
+          <button data-t="gifters" class="on">Top tặng quà</button>
+          <button data-t="commenters">Top bình luận</button>
+        </div>
+      </div>
+      <ol id="topList" class="top"></ol>
+    </div>
+  </section>
+</main>
+
+<div id="userCard" class="ucard" hidden></div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

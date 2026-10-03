@@ -1,0 +1,69 @@
+/* =====================================================================
+   Level / huy hiệu người xem + cửa sổ thông tin người xem
+   ===================================================================== */
+.bdgs { display: inline-flex; gap: 4px; align-items: center; margin-right: 6px; vertical-align: 1px; flex-wrap: wrap; }
+.bdg {
+  display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 6px;
+  border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 1; white-space: nowrap;
+  color: #fff; background: #3a4252; font-style: normal;
+}
+.bdg img { width: 13px; height: 13px; object-fit: contain; }
+.bdg i { font-style: normal; font-weight: 700; opacity: .9; margin-left: 2px; padding-left: 4px; border-left: 1px solid rgba(255,255,255,.35); }
+/* level quà: màu theo bậc */
+.b-lv.t0 { background: #4f6bd8; }
+.b-lv.t1 { background: #3b82c4; }
+.b-lv.t2 { background: #5b50d6; }
+.b-lv.t3 { background: #7c3aed; }
+.b-lv.t4 { background: #c0267e; }
+.b-lv.t5 { background: linear-gradient(90deg, #f59e0b, #e0487a); }
+.b-fan { background: #b4234a; border: 1px solid #ff6b8b; }
+.b-rank { background: #8f1d2c; border: 1px solid #ff4d6a; }
+.b-mod { background: #2d6a4f; }
+.b-sub { background: #8a5a00; }
+.b-other { background: #394150; font-weight: 600; }
+
+/* feed: dòng 1 = huy hiệu + tên, dòng 2 = nội dung */
+.feed .l1 { display: flex; align-items: center; flex-wrap: wrap; gap: 0 4px; min-width: 0; }
+.feed .l1 .txt { margin-left: 2px; }
+.feed .body > .txt { display: block; margin-top: 1px; }
+.feed li .avatar { width: 32px; height: 32px; margin-top: 2px; }
+[data-user] { cursor: pointer; }
+.name[data-user]:hover { text-decoration: underline; color: var(--accent-2); }
+.feed .name { color: #b9c0cf; }
+.top .l1 { display: inline-flex; align-items: center; gap: 0 4px; }
+.top .n { display: flex; flex-direction: column; }
+.mini-feed .name { cursor: pointer; }
+
+/* ---------- user card */
+.ucard {
+  position: fixed; z-index: 50; width: 340px; max-height: min(560px, calc(100vh - 16px)); overflow-y: auto;
+  background: var(--panel); border: 1px solid #3a4252; border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0,0,0,.55); padding: 14px; animation: in .15s ease;
+}
+.ucard.sheet { left: 8px !important; right: 8px; bottom: 8px; top: auto !important; width: auto; max-height: 75vh; }
+.uc-head { display: flex; align-items: center; gap: 12px; }
+.avatar.xl { width: 52px; height: 52px; border: 2px solid var(--accent); }
+.uc-id { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.uc-id b { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uc-x { border: 0; background: none; color: var(--muted); font-size: 22px; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; }
+.uc-x:hover { background: var(--panel-2); color: var(--text); }
+.uc-badges { margin: 10px 0 4px; }
+.uc-badges .bdgs { margin: 0; }
+.uc-badges .bdg { height: 22px; font-size: 12px; padding: 0 8px; }
+.uc-badges .bdg img { width: 15px; height: 15px; }
+.uc-pad { padding: 10px 0; }
+.uc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0; }
+.uc-stats div { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; display: flex; flex-direction: column; }
+.uc-stats span { font-size: 11px; color: var(--muted); }
+.uc-stats b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.uc-meta div { margin: 2px 0; }
+.uc-meta .ok { color: var(--ok); }
+.uc-sub { margin: 10px 0 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.uc-recent { list-style: none; margin: 0; padding: 0; max-height: 200px; overflow-y: auto; }
+.uc-recent li { display: flex; gap: 8px; padding: 4px 2px; font-size: 13px; border-bottom: 1px dashed var(--line); align-items: flex-start; }
+.uc-recent .t { flex: 1; min-width: 0; word-wrap: break-word; }
+.uc-recent .time { color: var(--muted); font-size: 11px; }
+.uc-recent li.gift .t { color: var(--gift); }
+.uc-recent img.g { width: 18px; height: 18px; vertical-align: middle; margin-right: 3px; }
+.uc-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.uc-actions a.btn { text-decoration: none; }

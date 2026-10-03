@@ -1,0 +1,6 @@
+TikTokLive==7.0.1
+Flask>=3.0
+flask-sock>=0.7
+httpx>=0.27
+python-dotenv>=1.0
+PySide6-Essentials>=6.7
