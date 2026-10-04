@@ -173,6 +173,7 @@
   function tileEl(uid) { return document.querySelector(`#wall .tile[data-room="${CSS.escape(uid)}"]`); }
 
   function addTile(r) {
+    if (r.status !== "connected" || tileEl(r.uid)) return;
     const t = document.createElement("div");
     t.className = "tile";
     t.dataset.room = r.uid;
@@ -194,7 +195,7 @@
     updateTile(r);
     updateTileStats(r);
     r.events.filter((ev) => MINI_KINDS.has(ev.kind) && !ev.streaking).slice(-MINI_FEED).forEach((ev) => addMini(r, ev));
-    $("wallEmpty").hidden = rooms.size > 0;
+    updateWallEmpty();
   }
 
   function updateTile(r) {
@@ -248,12 +249,15 @@
   }
   function removeTile(uid) {
     tileEl(uid)?.remove();
-    $("wallEmpty").hidden = rooms.size > 0;
+    updateWallEmpty();
+  }
+  function updateWallEmpty() {
+    $("wallEmpty").hidden = [...rooms.values()].some((r) => r.status === "connected");
   }
   function renderWall() {
     $("wall").innerHTML = "";
-    rooms.forEach(addTile);
-    $("wallEmpty").hidden = rooms.size > 0;
+    rooms.forEach((r) => { if (r.status === "connected") addTile(r); });
+    updateWallEmpty();
   }
 
   // ------------------------------------------------------------ detail (một phòng)
@@ -853,7 +857,7 @@
       if (rooms.has(uid)) return;
       const r = newRoom(data);
       rooms.set(uid, r);
-      renderTabs(); addTile(r); syncPlayers();
+      renderTabs(); updateWallEmpty();
       return;
     }
     if (type === "config") {
@@ -889,7 +893,12 @@
         using_session: data.using_session,
       });
       if (data.status === "connecting") { r.stats = {}; r.top = { gifters: [], live: [] }; r.events = []; r.giftIdx.clear(); }
-      updateTab(r); updateTile(r); updateSummary();
+      updateTab(r);
+      if (data.status === "connected") {
+        if (tileEl(uid)) updateTile(r);
+        else addTile(r);
+      } else removeTile(uid);
+      updateSummary();
       if (isActive) {
         if (data.status === "connecting") renderDetail();
         else { setRoomHeader(r); setQualities(r); setStatus(r); }
