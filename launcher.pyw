@@ -116,7 +116,8 @@ QToolTip {{ background: {C['surface3']}; color: {C['text']}; border: 1px solid {
 
 STATUS_TEXT = {"idle": "Chưa kết nối", "connecting": "Đang kết nối…", "connected": "Đang theo dõi",
                "reconnecting": "Đang kết nối lại…", "disconnected": "Mất kết nối", "offline": "Không live",
-               "ended": "Live đã kết thúc", "stopped": "Đã ngắt", "error": "Lỗi", "saved": "Đã lưu"}
+               "ended": "Live đã kết thúc", "stopped": "Đã ngắt", "error": "Lỗi", "saved": "Đã lưu",
+               "choose": "Chờ chọn phiên (mở web để chọn)"}
 STATUS_COLOR = {"connected": C["green2"], "connecting": C["warn"], "reconnecting": C["warn"],
                 "error": C["red2"], "disconnected": C["red2"]}
 

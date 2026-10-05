@@ -103,6 +103,11 @@ def _body() -> dict:
     return request.get_json(silent=True) or {}
 
 
+def _choice(b: dict) -> str:
+    c = str(b.get("choice") or "auto").lower()
+    return c if c in ("auto", "resume", "new") else "auto"
+
+
 @app.get("/")
 def index():
     return render_template("index.html")
@@ -119,10 +124,10 @@ def api_state():
 def api_add_room():
     b = _body()
     try:
-        uid = hub.add(b.get("unique_id", ""), bool(b.get("auto_reconnect", True)))
+        res = hub.add(b.get("unique_id", ""), bool(b.get("auto_reconnect", True)), _choice(b))
     except Exception as ex:
         return _err(ex)
-    return jsonify({"ok": True, "unique_id": uid})
+    return jsonify({"ok": True, **res})
 
 
 @app.delete("/api/rooms/<uid>")
@@ -137,10 +142,19 @@ def api_remove_room(uid: str):
 @app.post("/api/rooms/<uid>/reconnect")
 def api_reconnect(uid: str):
     try:
-        hub.reconnect(uid)
+        res = hub.reconnect(uid, _choice(_body()))
     except Exception as ex:
         return _err(ex)
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, **res})
+
+
+@app.get("/api/rooms/<uid>/snapshot")
+def api_room_snapshot(uid: str):
+    """Toàn bộ dữ liệu hiện tại của 1 phòng (dùng khi phòng vừa nối tiếp phiên cũ)."""
+    try:
+        return jsonify({"ok": True, **hub.room_snapshot(uid)})
+    except Exception as ex:
+        return _err(ex)
 
 
 @app.post("/api/rooms/<uid>/disconnect")

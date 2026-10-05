@@ -20,7 +20,7 @@
   const STATUS_TEXT = {
     idle: "Chưa kết nối", connecting: "Đang kết nối…", connected: "Đang theo dõi",
     reconnecting: "Đang kết nối lại…", disconnected: "Mất kết nối", offline: "Không live",
-    ended: "Live đã kết thúc", stopped: "Đã ngắt", error: "Lỗi",
+    ended: "Live đã kết thúc", stopped: "Đã ngắt", error: "Lỗi", choose: "Chờ chọn phiên",
   };
   const BUSY = ["connecting", "connected", "reconnecting"];
   const MAX_FEED = 500;          // sự kiện giữ cho mỗi phòng (phía trình duyệt)
@@ -49,7 +49,7 @@
     return {
       uid: s.unique_id, status: s.status, message: s.message, room: s.room || { unique_id: s.unique_id },
       qualities: s.qualities || [], auto_reconnect: s.auto_reconnect,
-      using_session: s.using_session,
+      using_session: s.using_session, choice: s.choice || null,
       stats: s.stats || {},
       top: { gifters: s.top_gifters || [], live: s.live_rank || [] },
       events: [], giftIdx: new Map(),
@@ -146,6 +146,7 @@
     ui.detailWanted = true;
     if (uid) renderDetail();
     syncPlayers();
+    if (uid && rooms.get(uid).status === "choose") askChoice(uid);   // phòng đang chờ chọn phiên -> hỏi luôn
   }
 
   // ------------------------------------------------------------ wall (lưới)
@@ -729,6 +730,7 @@
       try {
         const j = await api("POST", "/api/rooms", { unique_id: n, auto_reconnect: $("autoRe").checked });
         last = j.unique_id;
+        if (j.need_choice) askChoice(j.unique_id, j);
       } catch (err) { errors.push(`${n}: ${err.message}`); }
     }
     if (!errors.length) $("uid").value = "";
@@ -744,7 +746,69 @@
   }
 
   $("btnClose").onclick = () => ui.active && closeRoom(ui.active);
-  $("btnReconnect").onclick = () => ui.active && api("POST", roomUrl(ui.active, "/reconnect")).catch((err) => toast(err.message, "err"));
+  $("btnReconnect").onclick = () => ui.active && connectRoom(ui.active);
+
+  // ------------------------------------------------------------ nối tiếp phiên cũ / phiên mới
+  // Backend tự nối tiếp nếu phòng mới ngừng hoạt động <= 1 giờ, tự tạo phiên mới nếu > 3 giờ;
+  // ở giữa thì trả về need_choice -> hỏi người dùng.
+  let askChain = Promise.resolve();
+  const asking = new Set();
+  function askChoice(uid, info) {
+    if (asking.has(uid)) return askChain;
+    asking.add(uid);
+    askChain = askChain.then(() => new Promise((resolve) => {
+      const r = rooms.get(uid);
+      if (!r || (r.status !== "choose" && !info)) { asking.delete(uid); resolve(); return; }
+      info = info || r.choice || {};
+      const st = info.stats || {};
+      const parts = [["comments", "bình luận"], ["diamonds", "kim cương"], ["gifts", "quà"], ["follows", "theo dõi"]]
+        .filter(([k]) => st[k]).map(([k, t]) => `${fmt(st[k])} ${t}`);
+      const last = info.last_active ? new Date(info.last_active * 1000).toLocaleString("vi-VN", { hour12: false }) : "";
+      const bg = document.createElement("div");
+      bg.className = "modal-bg";
+      bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mdT">
+        <h3 id="mdT">${ic("clock")}Phiên cũ của @${esc(uid)}</h3>
+        <p>Lần cuối phòng có hoạt động cách đây <b>${esc(info.gap_text || "?")}</b>${last ? ` <span class="muted">(${esc(last)})</span>` : ""}.</p>
+        ${parts.length ? `<p class="muted">Phiên cũ đang có: ${parts.join(" · ")}</p>` : ""}
+        <p class="muted">Đồng bộ = lấy lại số liệu, bảng xếp hạng, hoạt động của phiên cũ và ghi tiếp vào file log cũ.</p>
+        <div class="modal-actions">
+          <button class="btn primary" data-c="resume">${ic("refresh")}OK – Đồng bộ phiên cũ</button>
+          <button class="btn" data-c="new">${ic("play")}Bắt đầu phiên mới</button>
+          <button class="btn ghost" data-c="">Để sau</button>
+        </div></div>`;
+      const done = async (c) => {
+        bg.remove(); document.removeEventListener("keydown", onKey); asking.delete(uid);
+        if (c) await connectRoom(uid, c);
+        resolve();
+      };
+      const onKey = (e) => { if (e.key === "Escape") done(""); };
+      bg.addEventListener("click", (e) => { const b = e.target.closest("[data-c]"); if (b) done(b.dataset.c); else if (e.target === bg) done(""); });
+      document.addEventListener("keydown", onKey);
+      document.body.appendChild(bg);
+      bg.querySelector("[data-c=resume]").focus();
+    }));
+    return askChain;
+  }
+  async function connectRoom(uid, choice = "auto") {
+    try {
+      const j = await api("POST", roomUrl(uid, "/reconnect"), { choice });
+      if (j.need_choice) askChoice(uid, j);
+      else if (j.resumed) toast(`@${uid}: nối tiếp phiên cũ`, "ok", 2500);
+    } catch (err) { toast(err.message, "err"); }
+  }
+  async function reloadRoom(uid) {
+    try {
+      const s = await api("GET", roomUrl(uid, "/snapshot"));
+      const r = rooms.get(uid); if (!r) return;
+      r.stats = s.stats || {};
+      r.top = { gifters: s.top_gifters || [], live: s.live_rank || [] };
+      r.room = s.room || r.room;
+      r.events = []; r.giftIdx.clear();
+      (s.recent || []).forEach((ev) => storeEvent(r, ev));
+      updateTab(r); updateTileStats(r);
+      if (ui.active === uid) renderDetail();
+    } catch (_) {}
+  }
   $("btnDisconnect").onclick = () => ui.active && api("POST", roomUrl(ui.active, "/disconnect")).catch((err) => toast(err.message, "err"));
 
   // ------------------------------------------------------------ sessionid
@@ -812,6 +876,7 @@
     const b = $("btnStartAll");
     b.classList.add("busy"); b.disabled = true;
     try {
+      ui.askUntil = Date.now() + 90000;   // phòng nào cần chọn phiên trong lúc kết nối lần lượt -> hỏi
       const j = await api("POST", "/api/start_all");
       toast(j.count ? `Đang kết nối ${j.count} phòng (lần lượt vài giây một phòng)…` : "Tất cả phòng đã đang chạy", "ok", 3500);
     } catch (err) { toast(err.message, "err"); }
@@ -890,9 +955,13 @@
       Object.assign(r, {
         status: data.status, message: data.message, room: data.room || r.room, qualities: data.qualities || [],
         auto_reconnect: data.auto_reconnect,
-        using_session: data.using_session,
+        using_session: data.using_session, choice: data.choice || null,
       });
-      if (data.status === "connecting") { r.stats = {}; r.top = { gifters: [], live: [] }; r.events = []; r.giftIdx.clear(); }
+      if (data.status === "connecting") {
+        if (data.resumed) reloadRoom(uid);   // nối tiếp phiên cũ: lấy lại số liệu + feed đã có, không xoá
+        else { r.stats = {}; r.top = { gifters: [], live: [] }; r.events = []; r.giftIdx.clear(); }
+      }
+      if (data.status === "choose" && (ui.askUntil || 0) > Date.now()) askChoice(uid);
       updateTab(r);
       if (data.status === "connected") {
         if (tileEl(uid)) updateTile(r);

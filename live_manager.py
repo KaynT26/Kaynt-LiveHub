@@ -50,7 +50,15 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 SAMPLE_EVERY = 10          # giây / 1 điểm trên biểu đồ
 MAX_SAMPLES = 360          # 1 giờ
 MAX_RECENT = 300           # số sự kiện giữ lại cho người mở trang sau
-MAX_ROOMS = int(os.environ.get("MAX_ROOMS", "8"))
+MAX_ROOMS = int(os.environ.get("MAX_ROOMS", "12"))
+# Nối tiếp phiên khi kết nối lại (tính từ lần cuối phòng có hoạt động thật):
+#   <= RESUME_AUTO_MINUTES          -> tự nối tiếp phiên cũ (giữ số liệu, feed, bảng xếp hạng, file log)
+#   lâu hơn                         -> hiện hộp thoại hỏi: OK = đồng bộ (nối tiếp) phiên cũ, hoặc phiên mới
+#   RESUME_ASK_MINUTES > 0          -> quá số phút này thì không hỏi nữa, tự tạo phiên mới (mặc định 0 = luôn hỏi)
+RESUME_AUTO_MIN = float(os.environ.get("RESUME_AUTO_MINUTES", "60"))
+RESUME_ASK_MIN = float(os.environ.get("RESUME_ASK_MINUTES", "0")) or float("inf")
+SESS_DIR = os.path.join(BASE_DIR, "data", "sessions")   # trạng thái phiên mỗi phòng (để mở lại app vẫn nối tiếp được)
+SAVE_EVERY = 30            # giây / 1 lần lưu trạng thái phiên
 START_STAGGER = float(os.environ.get("START_STAGGER", "2"))   # giây giữa 2 phòng khi Bắt đầu tất cả
 MAX_TRACKED_USERS = 50000
 # BarrageEvent.msg_type -> loại thông báo nổi bật (chỉ lấy loại gắn với 1 người dùng)
@@ -59,6 +67,8 @@ BARRAGE_KINDS = {9: "entrance", 11: "fan_entrance", 15: "enigma_entrance",
 USER_RECENT = 30            # số hoạt động gần nhất giữ cho mỗi người
 QUALITY_ORDER = ["origin", "uhd", "hd", "sd", "ld", "full_hd1", "hd1", "sd1", "sd2", "default"]
 ACTIVE = ("connecting", "connected", "reconnecting")
+ENTRANCE_SUBS = ("entrance", "fan_entrance", "enigma_entrance")
+_LOG_HEAD_RE = re.compile(r'^\{"kind": "(\w+)", "ts": ([0-9.]+)')
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._]{1,64}$")
 
 VIDEO_HEADERS = {
@@ -368,6 +378,48 @@ def _fresh_stats() -> Dict[str, Any]:
     }
 
 
+# ----------------------------------------------------------------- nối tiếp phiên
+def fmt_gap(sec: float) -> str:
+    m = max(0, int(sec // 60))
+    h, m = divmod(m, 60)
+    return f"{h} giờ {m} phút" if h else f"{m} phút"
+
+
+def _last_activity_in_log(path: str) -> Optional[float]:
+    """ts của sự kiện cuối cùng KHÔNG phải 'system' trong 1 file log (None nếu chỉ có sự kiện hệ thống)."""
+    try:
+        with open(path, "rb") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+    for ln in reversed(lines):
+        m = _LOG_HEAD_RE.match(ln.decode("utf-8", "ignore"))
+        if m and m.group(1) != "system":
+            return float(m.group(2))
+    return None
+
+
+def _legacy_previous(unique_id: str) -> Optional[Dict[str, Any]]:
+    """Phòng chưa có file trạng thái (log tạo trước bản cập nhật này): tìm file log gần nhất có hoạt động thật."""
+    try:
+        names = [n for n in os.listdir(LOG_DIR)
+                 if n.startswith(unique_id + "_") and n.endswith(".jsonl") and n[len(unique_id) + 1:][:1].isdigit()]
+    except OSError:
+        return None
+    oldest = time.time() - RESUME_ASK_MIN * 60
+    for n in sorted(names, reverse=True)[:40]:
+        path = os.path.join(LOG_DIR, n)
+        try:
+            if os.path.getmtime(path) < oldest:
+                break
+        except OSError:
+            continue
+        ts = _last_activity_in_log(path)
+        if ts:
+            return {"where": "disk", "last_active": ts, "log_path": path, "state": {}, "stats": {}}
+    return None
+
+
 # ----------------------------------------------------------------- một phòng live
 class LiveSession:
     def __init__(self, hub: "LiveHub", unique_id: str, auto_reconnect: bool = True,
@@ -382,6 +434,7 @@ class LiveSession:
         self._stop_requested = False
         self._log_fp = None
         self.using_session = False
+        self.choice_info: Optional[Dict[str, Any]] = None   # đang chờ người dùng chọn nối tiếp / phiên mới
         self._reset("idle")
 
     # -------------------------------------------------- state
@@ -400,6 +453,9 @@ class LiveSession:
             self.recent: deque = deque(maxlen=MAX_RECENT)
             self.samples: deque = deque(maxlen=MAX_SAMPLES)
             self._last = {"comments": 0, "likes": 0, "diamonds": 0, "joins": 0}
+            self.log_path: Optional[str] = None
+            self.last_active = 0.0      # lần cuối có hoạt động thật (không tính thông báo hệ thống)
+            self.resumed = False        # phiên này là nối tiếp phiên cũ
 
     def meta(self) -> Dict[str, Any]:
         with self._lock:
@@ -411,6 +467,8 @@ class LiveSession:
                 "qualities": list(self.streams.keys()),
                 "auto_reconnect": self.auto_reconnect,
                 "using_session": self.using_session,
+                "resumed": self.resumed,
+                "choice": self.choice_info,
             }
 
     def snapshot(self) -> Dict[str, Any]:
@@ -496,11 +554,15 @@ class LiveSession:
             self.message = message
         self._publish("status", self.meta())
         self._push("system", None, {"text": message or status})
+        if status not in ("connecting", "choose"):
+            self.save_state()
 
     def _push(self, kind: str, user: Any, extra: Dict[str, Any]) -> Dict[str, Any]:
         u = user if isinstance(user, dict) or user is None else _user(user)
         ev = {"kind": kind, "ts": time.time(), "user": u, **extra}
         with self._lock:
+            if kind != "system":
+                self.last_active = ev["ts"]
             self.recent.append(ev)
             if u and u.get("id"):
                 self._track_user(u, ev)
@@ -513,16 +575,160 @@ class LiveSession:
         return ev
 
     # -------------------------------------------------- lifecycle (chạy trong loop)
-    async def start(self) -> None:
+    # -------------------------------------------------- phiên cũ: lưu / tìm / nạp lại
+    def _state_path(self) -> str:
+        return os.path.join(SESS_DIR, f"{self.unique_id}.json")
+
+    def save_state(self) -> None:
+        """Lưu tóm tắt phiên (file log + số liệu không có trong log) để mở lại app vẫn nối tiếp được."""
+        with self._lock:
+            if not self.log_path or not self.last_active:
+                return
+            d = {"v": 1, "unique_id": self.unique_id, "log": os.path.basename(self.log_path),
+                 "last_active": self.last_active, "saved_at": time.time(), "room": self.room,
+                 "stats": dict(self.stats), "samples": list(self.samples), "live_rank": list(self.live_rank)}
+        try:
+            os.makedirs(SESS_DIR, exist_ok=True)
+            tmp = self._state_path() + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False, default=str)
+            os.replace(tmp, self._state_path())
+        except Exception:
+            pass
+
+    def previous(self) -> Optional[Dict[str, Any]]:
+        """Phiên trước của phòng: còn trong bộ nhớ (app chưa tắt), hoặc trên đĩa (data/sessions + logs)."""
+        with self._lock:
+            if self.log_path and self.last_active:
+                return {"where": "memory", "last_active": self.last_active, "log_path": self.log_path,
+                        "stats": dict(self.stats)}
+        try:
+            with open(self._state_path(), encoding="utf-8") as f:
+                st = json.load(f)
+            path = os.path.join(LOG_DIR, os.path.basename(st.get("log") or ""))
+            if st.get("last_active") and os.path.isfile(path):
+                return {"where": "disk", "last_active": float(st["last_active"]), "log_path": path,
+                        "state": st, "stats": st.get("stats") or {}}
+        except (OSError, ValueError, TypeError):
+            pass
+        return _legacy_previous(self.unique_id)
+
+    def plan_start(self, choice: str = "auto") -> Dict[str, Any]:
+        """choice: auto (theo khoảng cách thời gian) | resume | new  ->  mode: resume | new | ask"""
+        prev = self.previous()
+        if not prev:
+            return {"mode": "new", "prev": None, "info": None}
+        gap = max(0.0, time.time() - prev["last_active"])
+        ps = prev.get("stats") or {}
+        info = {"gap": int(gap), "gap_text": fmt_gap(gap), "last_active": prev["last_active"],
+                "auto_minutes": RESUME_AUTO_MIN,
+                "stats": {k: int(ps.get(k) or 0) for k in ("comments", "diamonds", "gifts", "likes", "joins", "follows")}}
+        if choice in ("resume", "new"):
+            mode = choice
+        elif gap <= RESUME_AUTO_MIN * 60:
+            mode = "resume"
+        elif gap <= RESUME_ASK_MIN * 60:
+            mode = "ask"
+        else:
+            mode = "new"
+        return {"mode": mode, "prev": prev, "info": info}
+
+    def load_previous(self, prev: Dict[str, Any]) -> None:
+        """Dựng lại phiên cũ từ file log (feed, thống kê từng người, top quà/bình luận) + file trạng thái."""
+        st = prev.get("state") or {}
+        saved = st.get("stats") or {}
+        with self._lock:
+            self._reset(self.status)
+            stats = _fresh_stats()
+            first_ts = None
+            try:
+                with open(prev["log_path"], encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        try:
+                            ev = json.loads(line)
+                        except ValueError:
+                            continue
+                        if not isinstance(ev, dict) or "kind" not in ev or "ts" not in ev:
+                            continue
+                        k = ev["kind"]
+                        u = ev.get("user") if isinstance(ev.get("user"), dict) else None
+                        self.recent.append(ev)
+                        if k == "system":
+                            continue
+                        first_ts = first_ts or ev["ts"]
+                        uid = (u or {}).get("id") or ""
+                        if uid:
+                            self._track_user(u, ev)
+                        if k == "comment":
+                            stats["comments"] += 1
+                            if uid:
+                                self.top_commenters[uid] += 1
+                        elif k == "gift" and not ev.get("streaking"):
+                            cnt = int(ev.get("count") or 1)
+                            total = int(ev.get("diamonds") or 0) * cnt
+                            stats["diamonds"] += total
+                            stats["gifts"] += cnt
+                            if uid:
+                                self.top_gifters[uid] += total
+                        elif k == "like":
+                            stats["likes"] += int(ev.get("count") or 0)
+                        elif k == "join":
+                            stats["joins"] += 1
+                        elif k == "barrage" and ev.get("sub") in ENTRANCE_SUBS:
+                            stats["vip_joins"] += 1
+                        elif k == "follow":
+                            stats["follows"] += 1
+                        elif k == "share":
+                            stats["shares"] += 1
+            except OSError:
+                pass
+            for k in ("viewers", "viewers_peak", "likes_total"):
+                stats[k] = max(stats[k], int(saved.get(k) or 0))
+            stats["connected_at"] = saved.get("connected_at") or first_ts
+            self.stats = stats
+            if st.get("room"):
+                self.room = st["room"]
+            self.samples.extend(st.get("samples") or [])
+            self.live_rank = list(st.get("live_rank") or [])
+            self.log_path = prev["log_path"]
+            self.last_active = prev["last_active"]
+
+    async def start(self, choice: str = "auto") -> Dict[str, Any]:
+        """Kết nối phòng. Nếu phiên trước còn mới -> nối tiếp thay vì xoá hết số liệu."""
         await self.stop(silent=True)
-        self._reset("connecting")
+        loop = asyncio.get_running_loop()
+        plan = await loop.run_in_executor(None, self.plan_start, choice)
+        info = plan["info"]
+        if plan["mode"] == "ask":
+            with self._lock:
+                self.choice_info = info
+            self._set_status("choose", f"Phiên trước cách đây {info['gap_text']} – chọn Nối tiếp hoặc Phiên mới")
+            return {"need_choice": True, **info}
+        with self._lock:
+            self.choice_info = None
+        resumed = plan["mode"] == "resume"
+        if resumed:
+            prev = plan["prev"]
+            if prev["where"] != "memory":
+                await loop.run_in_executor(None, self.load_previous, prev)
+            with self._lock:
+                self.status = "connecting"
+                self.resumed = True
+                self.streams = {}
+                self._last = {k: int(self.stats.get(k) or 0) for k in self._last}
+            log_path = prev["log_path"]
+        else:
+            self._reset("connecting")
+            os.makedirs(LOG_DIR, exist_ok=True)
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_path = os.path.join(LOG_DIR, f"{self.unique_id}_{stamp}.jsonl")
         self._stop_requested = False
-        os.makedirs(LOG_DIR, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self._log_fp = open(os.path.join(LOG_DIR, f"{self.unique_id}_{stamp}.jsonl"), "a",
-                            encoding="utf-8", buffering=1)
-        self._set_status("connecting", f"Đang kết nối @{self.unique_id}…")
+        self.log_path = log_path
+        self._log_fp = open(log_path, "a", encoding="utf-8", buffering=1)
+        pre = f"Nối tiếp phiên cũ (cách đây {info['gap_text']}) – " if resumed else ""
+        self._set_status("connecting", f"{pre}Đang kết nối @{self.unique_id}…")
         self._runner = asyncio.ensure_future(self._run())
+        return {"need_choice": False, "resumed": resumed}
 
     async def stop(self, silent: bool = False) -> None:
         self._stop_requested = True
@@ -549,6 +755,7 @@ class LiveSession:
         if self._log_fp:
             self._log_fp.close()
             self._log_fp = None
+        self.save_state()
 
     async def _run(self) -> None:
         uid = self.unique_id
@@ -647,6 +854,7 @@ class LiveSession:
                 m.streams = extract_streams(client.room_info)
                 if not m.stats["connected_at"]:
                     m.stats["connected_at"] = time.time()
+                m.last_active = time.time()
                 uc = (client.room_info or {}).get("user_count")
                 if uc:
                     m.stats["viewers"] = int(uc)
@@ -781,6 +989,8 @@ class LiveSession:
 
     # -------------------------------------------------- sampler
     def tick(self, tick: int) -> None:
+        if tick % SAVE_EVERY == 0:
+            self.save_state()
         with self._lock:
             stats = dict(self.stats)
             tops = {"top_gifters": self._top(self.top_gifters), "live_rank": list(self.live_rank)}
@@ -874,11 +1084,11 @@ class LiveHub:
         return s.stream_url(quality) if s else None
 
     # -------------------------------------------------- public API (gọi từ Flask thread)
-    def add(self, text: str, auto_reconnect: bool = True) -> str:
+    def add(self, text: str, auto_reconnect: bool = True, choice: str = "auto") -> Dict[str, Any]:
         uid = parse_username(text)
-        uid = self._call(self._add(uid, auto_reconnect))
+        res = self._call(self._add(uid, auto_reconnect, choice), 60)
         store.save_room(uid, auto_reconnect, False)
-        return uid
+        return res
 
     def remove(self, uid: str) -> None:
         s = self._get(uid)
@@ -918,8 +1128,11 @@ class LiveHub:
         finally:
             self._starting_all = False
 
-    def reconnect(self, uid: str) -> None:
-        self._call(self._get(uid).start())
+    def reconnect(self, uid: str, choice: str = "auto") -> Dict[str, Any]:
+        return self._call(self._get(uid).start(choice), 60)
+
+    def room_snapshot(self, uid: str) -> Dict[str, Any]:
+        return self._get(uid).snapshot()
 
     def disconnect(self, uid: str) -> None:
         self._call(self._get(uid).stop())
@@ -944,7 +1157,7 @@ class LiveHub:
             pass
 
     # -------------------------------------------------- loop side
-    async def _add(self, uid: str, auto_reconnect: bool) -> str:
+    async def _add(self, uid: str, auto_reconnect: bool, choice: str = "auto") -> Dict[str, Any]:
         with self._lock:
             s = self.sessions.get(uid)
             if s is None:
@@ -960,9 +1173,9 @@ class LiveHub:
             self.publish("added", uid, s.snapshot())
         elif s.status in ACTIVE:
             self.publish("status", uid, s.meta())
-            return uid
-        await s.start()
-        return uid
+            return {"unique_id": uid, "need_choice": False}
+        res = await s.start(choice)
+        return {"unique_id": uid, **res}
 
     async def _remove(self, s: LiveSession) -> None:
         await s.stop(silent=True)

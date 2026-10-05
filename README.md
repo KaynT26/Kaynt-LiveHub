@@ -2,7 +2,7 @@
 
 Web app (Flask + TikTokLive) để theo dõi **nhiều phiên TikTok LIVE cùng lúc** theo thời gian thực:
 
-- **Nhiều phòng**: mỗi phòng một tab (xem chi tiết), tab **Tất cả** hiện lưới video nhỏ + số liệu + bình luận mới nhất của mọi phòng. Mặc định tối đa 8 phòng (`MAX_ROOMS`).
+- **Nhiều phòng**: mỗi phòng một tab (xem chi tiết), tab **Tất cả** hiện lưới video nhỏ + số liệu + bình luận mới nhất của mọi phòng. Mặc định tối đa 12 phòng (`MAX_ROOMS`).
 - **Video live** phát ngay trên trang (FLV qua mpegts.js, Flask chuyển tiếp luồng để tránh lỗi CORS/Referer), chọn chất lượng HD/SD/LD…
 - **Hoạt động trực tiếp**: bình luận, quà (gộp combo đang chạy vào 1 dòng), theo dõi, chia sẻ, vào phòng, thả tim – có bộ lọc và ô tìm kiếm.
 - **Thống kê**: người xem (và đỉnh), bình luận, kim cương/quà, lượt thích, vào phòng, theo dõi/chia sẻ, thời gian đã theo dõi.
@@ -72,7 +72,9 @@ Tạo key tại https://www.eulerstream.com → dán vào `SIGN_API_KEY=` trong 
 | Biến | Ý nghĩa |
 |---|---|
 | `PORT` / `HOST` | Cổng / địa chỉ web (mặc định `5000` / `0.0.0.0` = mở cho WiFi). |
-| `MAX_ROOMS` | Số phòng tối đa theo dõi cùng lúc (mặc định `8`). |
+| `MAX_ROOMS` | Số phòng tối đa theo dõi cùng lúc (mặc định `12`). |
+| `RESUME_AUTO_MINUTES` | Kết nối lại khi phòng mới ngừng hoạt động ≤ số phút này → tự nối tiếp phiên cũ (mặc định `60`). |
+| `RESUME_ASK_MINUTES` | Lâu hơn mốc trên → hiện hộp thoại hỏi có đồng bộ phiên cũ không. `0` (mặc định) = luôn hỏi; đặt số phút để quá mốc đó tự tạo phiên mới. |
 
 ## Cấu trúc
 
