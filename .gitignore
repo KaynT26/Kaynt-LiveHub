@@ -10,3 +10,4 @@ logs/
 recordings/
 _backup_1phong/
 data/
+.venv-linux/

@@ -37,6 +37,38 @@ pip install -r requirements.txt
 python app.py
 ```
 
+## Chạy trên Linux (không giao diện)
+
+Không cần cửa sổ điều khiển, không cần bấm Bắt đầu: chạy là tự bật server web **và tự kết nối mọi phòng đã lưu**.
+Cần Python ≥ 3.11. Cài thư viện 1 lần (không cần PySide6):
+
+```bash
+pip install "TikTokLive==7.0.1" "Flask>=3.0" "flask-sock>=0.7" "httpx>=0.27" "python-dotenv>=1.0"
+```
+
+```bash
+python3 headless.py                                # chạy, tự kết nối phòng đã lưu
+python3 headless.py --room fm.psycho,eclipse.fm2   # thêm phòng (lưu vào data/settings.json cho lần sau)
+python3 headless.py --list                         # xem phòng đã lưu
+python3 headless.py --remove fm.spacex             # xoá phòng
+python3 headless.py --port 8080 --host 127.0.0.1   # đổi cổng / chỉ cho máy này truy cập
+python3 headless.py --no-connect                   # chỉ bật server, kết nối phòng sau trên web
+```
+
+Dừng bằng **Ctrl+C** hoặc `kill` – các phòng được ngắt gọn.
+Mỗi 5 phút in tình trạng các phòng ra màn hình (`--status-every 60` để đổi, `0` để tắt).
+sessionid / API key / mật khẩu lấy từ `.env` và `data/settings.json` như bản Windows (có thể copy nguyên `data/settings.json` từ máy Windows sang).
+Mở cho máy khác vào (`HOST=0.0.0.0`) thì **nên đặt `ACCESS_PASSWORD`** trong `.env`.
+
+**Chạy nền, tự bật khi khởi động máy** (systemd): sửa `User` và đường dẫn trong `livehub.service`, rồi
+
+```bash
+sudo cp livehub.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now livehub
+journalctl -u livehub -f                  # xem log
+```
+
 ## Cấu hình
 
 Cấu hình thường dùng (sessionid, API key, mật khẩu WiFi, danh sách phòng) nhập trong **tab Cài đặt / Phòng** của cửa sổ Kaynt LiveHub. File **`.env`** (mẫu: `.env.example`) vẫn dùng được cho các tuỳ chọn nâng cao bên dưới; ô nào trên giao diện để trống thì lấy từ `.env`.

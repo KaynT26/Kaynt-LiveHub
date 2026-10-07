@@ -1,0 +1,29 @@
+# Kaynt LiveHub – chạy nền, tự bật khi khởi động máy (systemd).
+#
+# Cài đặt (sửa User và đường dẫn cho đúng máy bạn):
+#   sudo cp livehub.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now livehub
+# Xem log:     journalctl -u livehub -f
+# Dừng / chạy: sudo systemctl stop livehub  /  sudo systemctl start livehub
+#
+# Cài thư viện trước (xem đầu file headless.py). Nếu dùng venv thì đổi /usr/bin/python3
+# thành đường dẫn python trong venv, vd /opt/kaynt-livehub/.venv/bin/python
+
+[Unit]
+Description=Kaynt LiveHub (headless)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/kaynt-livehub
+ExecStart=/usr/bin/python3 /opt/kaynt-livehub/headless.py
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=40
+
+[Install]
+WantedBy=multi-user.target

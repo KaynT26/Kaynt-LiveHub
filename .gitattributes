@@ -1,0 +1,2 @@
+# Giữ xuống dòng kiểu Linux (LF) để chạy được trên Linux
+*.service text eol=lf
