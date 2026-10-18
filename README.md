@@ -58,7 +58,7 @@ python3 headless.py --no-connect                   # chỉ bật server, kết n
 Dừng bằng **Ctrl+C** hoặc `kill` – các phòng được ngắt gọn.
 Mỗi 5 phút in tình trạng các phòng ra màn hình (`--status-every 60` để đổi, `0` để tắt).
 sessionid / API key / mật khẩu lấy từ `.env` và `data/settings.json` như bản Windows (có thể copy nguyên `data/settings.json` từ máy Windows sang).
-Mở cho máy khác vào (`HOST=0.0.0.0`) thì **nên đặt `ACCESS_PASSWORD`** trong `.env`.
+Mở cho máy khác vào (`HOST=0.0.0.0`) thì **phải đặt `ACCESS_PASSWORD`** trong `.env`; người dùng sẽ thấy trang đăng nhập Kaynt LiveHub thay cho hộp thoại Basic Auth của trình duyệt. Đặt thêm `SECRET_KEY` ổn định để giữ phiên qua lần khởi động lại; đặt `SESSION_COOKIE_SECURE=true` khi chạy sau HTTPS.
 
 **Chạy nền, tự bật khi khởi động máy** (systemd): sửa `User` và đường dẫn trong `livehub.service`, rồi
 
@@ -77,7 +77,7 @@ Cấu hình thường dùng (sessionid, API key, mật khẩu WiFi, danh sách p
 
 Mặc định `HOST=0.0.0.0`: khi chạy, cửa sổ đen in ra link dạng `http://192.168.x.x:5000`, trên web có nút **📶** để copy link.
 
-1. **Đặt `ACCESS_PASSWORD`** trong `.env` (khuyên dùng). Máy khác mở link sẽ được hỏi mật khẩu – tên đăng nhập gõ gì cũng được. Chính máy chạy app thì không cần nhập.
+1. **Đặt `ACCESS_PASSWORD`** trong `.env`. Khi mở link, tất cả thiết bị (kể cả trình duyệt chạy trên máy chủ) đăng nhập qua trang Kaynt LiveHub.
 2. Lần đầu Windows hỏi quyền mạng cho Python → chọn **Private networks**. Nếu lỡ bấm Cancel hoặc máy khác không vào được: bấm **Mở tường lửa cho WiFi** trong cửa sổ Kaynt LiveHub (tự xin quyền Admin, mở cổng cho mạng Private) và đảm bảo WiFi đang để **Private network**.
 3. Chỉ muốn dùng trên máy này: đặt `HOST=127.0.0.1`.
 
@@ -104,6 +104,9 @@ Tạo key tại https://www.eulerstream.com → dán vào `SIGN_API_KEY=` trong 
 | Biến | Ý nghĩa |
 |---|---|
 | `PORT` / `HOST` | Cổng / địa chỉ web (mặc định `5000` / `0.0.0.0` = mở cho WiFi). |
+| `TIKTOK_PROXY` | Proxy đi ra cho kết nối HTTP/WebSocket TikTok, tải video và yêu cầu quản trị; hỗ trợ `http://`, `https://`, `socks5://`. Để trống để kết nối trực tiếp. |
+| `SECRET_KEY` | Khoá bí mật ký cookie đăng nhập; tạo bằng `python -c "import secrets; print(secrets.token_hex(32))"` và giữ kín, ổn định trên VPS. |
+| `SESSION_COOKIE_SECURE` | Đặt `true` nếu truy cập qua HTTPS để cookie chỉ được gửi trên kết nối bảo mật. |
 | `MAX_ROOMS` | Số phòng tối đa theo dõi cùng lúc (mặc định `12`). |
 | `RESUME_AUTO_MINUTES` | Kết nối lại khi phòng mới ngừng hoạt động ≤ số phút này → tự nối tiếp phiên cũ (mặc định `60`). |
 | `RESUME_ASK_MINUTES` | Lâu hơn mốc trên → hiện hộp thoại hỏi có đồng bộ phiên cũ không. `0` (mặc định) = luôn hỏi; đặt số phút để quá mốc đó tự tạo phiên mới. |
@@ -127,7 +130,7 @@ API:
 
 Probe dùng `TikTokLiveClient`, đặt session ID và IDC từ `test.env`, rồi chờ
 `ConnectEvent`. Không gửi comment hay thực hiện hành động khác trong phòng.
-`test.env` được Git bỏ qua; không chia sẻ hoặc commit cookie.
+`test.env` được Git bỏ qua; không chia sẻ hoặc commit cookie. Có thể đặt `TIKTOK_PROXY` trong file này để probe kết nối cũng đi qua proxy.
 
 ```bat
 .venv\Scripts\python.exe tests\test_tiktok_direct_connection_probe.py
@@ -159,6 +162,9 @@ trực tiếp tới TikTok bằng cookie `sessionid` và `tt-target-idc`; phần
 không xác nhận comment đã xuất hiện trên live.
 
 ## Lưu ý
+
+- Khi triển khai VPS, đặt `HOST=127.0.0.1` nếu dùng Nginx/Caddy làm reverse proxy, cấu hình HTTPS ở reverse proxy, đặt `SESSION_COOKIE_SECURE=true`, và đặt `ACCESS_PASSWORD` cùng `SECRET_KEY` mạnh trong `.env`. Không mở trực tiếp cổng Flask ra Internet nếu không cần.
+- Proxy TikTok có thể khai báo trong `.env` bằng `TIKTOK_PROXY`; mọi kết nối mới sẽ dùng proxy này cho HTTP, WebSocket và luồng video. Ví dụ có xác thực: `http://user:password@host:port` (mã hoá ký tự đặc biệt trong username/password theo URL).
 
 - Mỗi ô video trong lưới là một luồng tải riêng từ CDN → nhiều phòng thì tốn mạng. Để chất lượng lưới ở **Thấp**, hoặc tắt "Phát video trong lưới" (vẫn nhận bình luận/quà/thống kê bình thường). Khi mở tab một phòng, video trong lưới tự tắt.
 - Tất cả phòng dùng chung máy chủ ký Euler Stream (miễn phí có giới hạn): thêm nhiều phòng cùng lúc có thể bị rate-limit → đặt `SIGN_API_KEY`.

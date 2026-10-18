@@ -101,6 +101,12 @@
 
     <div class="side-foot">
       <div id="summary" class="summary">0 phòng</div>
+      {% if authenticated %}
+      <form class="logout-form" action="{{ url_for('logout') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="logout-link" type="submit">Đăng xuất</button>
+      </form>
+      {% endif %}
     </div>
   </aside>
 

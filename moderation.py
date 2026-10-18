@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 
+from proxy_config import tiktok_proxy
 import store
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -29,7 +30,7 @@ async def block_user(room_id: str, user_id: str) -> None:
         "Origin": "https://www.tiktok.com",
     }
     payload = {"room_id": room_id, "kick_uid": user_id}
-    async with httpx.AsyncClient(timeout=15, headers=headers) as client:
+    async with httpx.AsyncClient(timeout=15, headers=headers, proxy=tiktok_proxy()) as client:
         response = await client.post(
             "https://webcast.tiktok.com/webcast/room/kick/user/",
             params={"aid": "1988"},

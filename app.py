@@ -11,20 +11,23 @@ import hmac
 import logging
 import os
 import queue
+import secrets
 import socket
 import threading
 import time
+from datetime import timedelta
+from urllib.parse import urlsplit
 
 import httpx
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context, url_for
 from flask_sock import Sock
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_FILE = os.path.join(BASE_DIR, ".env")
 RELOADABLE_KEYS = ("TIKTOK_SESSIONID", "TIKTOK_TARGET_IDC", "TIKTOK_SESSION_MODE",
                    "WHITELIST_AUTHENTICATED_SESSION_ID_HOST", "SIGN_API_KEY", "SIGN_API_URL",
-                   "ACCESS_PASSWORD")
+                   "ACCESS_PASSWORD", "TIKTOK_PROXY")
 load_dotenv(ENV_FILE)  # đọc .env trước khi import live_manager (MAX_ROOMS, SIGN_API_KEY, sessionid…)
 
 import store  # noqa: E402
@@ -35,9 +38,22 @@ store.apply_env()   # cấu hình nhập trên giao diện (data/settings.json) 
 
 import moderation  # noqa: E402
 from live_manager import VIDEO_HEADERS, LiveHub, _mask, session_public, sign_public  # noqa: E402
+from proxy_config import tiktok_proxy  # noqa: E402
 
 logging.getLogger("werkzeug").setLevel(logging.WARNING)  # bỏ log từng request cho đỡ rối
 app = Flask(__name__)
+secret_key = os.environ.get("SECRET_KEY", "").strip()
+if not secret_key:
+    secret_key = secrets.token_hex(32)
+    if store.effective_password():
+        app.logger.warning("SECRET_KEY chưa được đặt; phiên đăng nhập sẽ hết hiệu lực khi khởi động lại.")
+app.config.update(
+    SECRET_KEY=secret_key,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in {"1", "true", "yes"},
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+)
 sock = Sock(app)
 hub = LiveHub()
 atexit.register(hub.shutdown)
@@ -82,16 +98,69 @@ def _is_local() -> bool:
 
 @app.before_request
 def require_password():
-    """Máy khác trong WiFi phải nhập mật khẩu (nếu đặt ACCESS_PASSWORD). Chính máy này thì không cần."""
+    """Require a browser login whenever ACCESS_PASSWORD is configured."""
     pw = _password()
-    if not pw or request.remote_addr in LOCAL_ADDRS:
+    if not pw or request.endpoint in {"login", "static"}:
         return None
-    auth = request.authorization
-    given = (auth.password if auth else "") or ""
-    if hmac.compare_digest(given.encode(), pw.encode()):
+    if session.get("authenticated") is True:
         return None
-    return Response("Cần mật khẩu để truy cập Kaynt Live Observer", 401,
-                    {"WWW-Authenticate": 'Basic realm="Kaynt Live Observer", charset="UTF-8"'})
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "error": "Vui lòng đăng nhập lại."}), 401
+    if request.path.startswith(("/video/", "/ws/")):
+        return Response("Vui lòng đăng nhập lại.", 401)
+    return redirect(url_for("login", next=request.full_path.rstrip("?")))
+
+
+def _csrf_token() -> str:
+    token = session.get("_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_csrf_token"] = token
+    return token
+
+
+def _safe_next_url(value: str | None) -> str:
+    if not value:
+        return "/"
+    parsed = urlsplit(value)
+    if (parsed.scheme or parsed.netloc or not value.startswith("/") or value.startswith("//")
+            or "\\" in value or any(ord(char) < 32 for char in value)):
+        return "/"
+    return value
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not _password():
+        return redirect(url_for("index"))
+    target = _safe_next_url(request.args.get("next") or request.form.get("next"))
+    if session.get("authenticated") is True:
+        return redirect(target)
+    error = ""
+    status = 200
+    if request.method == "POST":
+        token = session.get("_csrf_token", "")
+        submitted = request.form.get("csrf_token", "")
+        if not token or not hmac.compare_digest(str(token), submitted):
+            error, status = "Phiên đăng nhập đã hết hạn. Vui lòng thử lại.", 400
+        elif hmac.compare_digest(request.form.get("password", "").encode(), _password().encode()):
+            session.clear()
+            session["authenticated"] = True
+            session.permanent = True
+            return redirect(target)
+        else:
+            error, status = "Mật khẩu không chính xác. Vui lòng thử lại.", 401
+    return render_template("login.html", csrf_token=_csrf_token(), next_url=target, error=error), status
+
+
+@app.post("/logout")
+def logout():
+    token = session.get("_csrf_token", "")
+    submitted = request.form.get("csrf_token", "")
+    if not token or not hmac.compare_digest(str(token), submitted):
+        return "Phiên đăng xuất không hợp lệ. Tải lại trang và thử lại.", 400
+    session.clear()
+    return redirect(url_for("login") if _password() else url_for("index"))
 
 
 def _err(ex: Exception, code: int = 400):
@@ -110,7 +179,7 @@ def _choice(b: dict) -> str:
 
 @app.get("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", authenticated=bool(_password()), csrf_token=_csrf_token())
 
 
 @app.get("/api/state")
@@ -334,7 +403,12 @@ def video_proxy(uid: str, quality: str):
     if not url:
         return "Không có luồng video", 404
 
-    client = httpx.Client(headers=VIDEO_HEADERS, timeout=httpx.Timeout(15, read=30), follow_redirects=True)
+    try:
+        proxy = tiktok_proxy()
+    except ValueError as ex:
+        return str(ex), 500
+    client = httpx.Client(headers=VIDEO_HEADERS, timeout=httpx.Timeout(15, read=30),
+                          follow_redirects=True, proxy=proxy)
     try:
         r = client.send(client.build_request("GET", url), stream=True)
     except Exception as ex:
@@ -366,7 +440,13 @@ def video_ws(ws, uid: str, quality: str):
         ws.close(reason=1008, message="Không có luồng video")
         return
     try:
-        with httpx.Client(headers=VIDEO_HEADERS, timeout=httpx.Timeout(15, read=30), follow_redirects=True) as c:
+        proxy = tiktok_proxy()
+    except ValueError as ex:
+        ws.close(reason=1011, message=str(ex))
+        return
+    try:
+        with httpx.Client(headers=VIDEO_HEADERS, timeout=httpx.Timeout(15, read=30),
+                          follow_redirects=True, proxy=proxy) as c:
             with c.stream("GET", url) as r:
                 if r.status_code != 200:
                     ws.close(reason=1011, message=f"CDN trả về {r.status_code}")

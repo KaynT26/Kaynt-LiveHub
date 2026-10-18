@@ -18,6 +18,7 @@ from collections import Counter, deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import httpx
 import store
 from TikTokLive import TikTokLiveClient
 from TikTokLive.client.errors import (
@@ -43,6 +44,7 @@ from TikTokLive.events import (
     RoomUserSeqEvent,
     ShareEvent,
 )
+from proxy_config import tiktok_proxy
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
@@ -761,10 +763,15 @@ class LiveSession:
         uid = self.unique_id
         attempts = 0
         cfg = session_config()
+        try:
+            proxy = tiktok_proxy()
+        except ValueError as ex:
+            self._set_status("error", str(ex))
+            return
         # auto: chỉ dùng sessionid khi phòng giới hạn độ tuổi · always: luôn dùng · off: không dùng
         self.using_session = cfg["mode"] == "always" and cfg["configured"]
         while not self._stop_requested:
-            client = TikTokLiveClient(unique_id=uid)
+            client = TikTokLiveClient(unique_id=uid, web_proxy=proxy, ws_proxy=proxy)
             if self.using_session:
                 client.web.set_session(cfg["_sid"], cfg["_idc"] or None)
             self.client = client

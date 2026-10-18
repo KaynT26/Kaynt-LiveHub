@@ -10,6 +10,8 @@ from TikTokLive.client.errors import UserOfflineError
 from TikTokLive.client.logger import LogLevel
 from TikTokLive.events import ConnectEvent
 
+from proxy_config import parse_tiktok_proxy
+
 
 TEST_ENV = Path(__file__).resolve().parents[1] / "test.env"
 config = dotenv_values(TEST_ENV)
@@ -23,7 +25,13 @@ if not username:
 if not session_id or not target_idc:
     raise SystemExit(f"Fill TIKTOK_SESSIONID and TIKTOK_TARGET_IDC in {TEST_ENV.name}")
 
-client: TikTokLiveClient = TikTokLiveClient(unique_id=username,fetch_room_info=True)
+proxy_url = str(config.get("TIKTOK_PROXY") or "").strip()
+if not proxy_url:
+    proxy_url = os.environ.get("TIKTOK_PROXY", "")
+proxy = parse_tiktok_proxy(proxy_url)
+client: TikTokLiveClient = TikTokLiveClient(
+    unique_id=username, fetch_room_info=True, web_proxy=proxy, ws_proxy=proxy
+)
 
 
 @client.on(ConnectEvent)

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090b12">
+  <title>Đăng nhập · Kaynt LiveHub</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}">
+</head>
+<body>
+  <main class="login-shell">
+    <section class="brand-panel" aria-label="Giới thiệu Kaynt LiveHub">
+      <a class="brand" href="/" aria-label="Kaynt LiveHub">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M7 7v18M7 16l13-9M7 16l13 9M24 9v14"/></svg>
+        </span>
+        <span><b>Kaynt</b><small>LIVEHUB</small></span>
+      </a>
+      <div class="brand-copy">
+        <span class="eyebrow"><i></i> LIVE CONTROL ROOM</span>
+        <h1>Mọi khoảnh khắc<br><em>trong tầm mắt.</em></h1>
+        <p>Theo dõi nhiều phiên TikTok LIVE, bình luận và số liệu theo thời gian thực — tất cả trong một bảng điều khiển.</p>
+      </div>
+      <div class="status-line"><span class="status-icon">↗</span><span><b>Không gian riêng tư</b><small>Chỉ tài khoản được cấp quyền mới có thể truy cập.</small></span></div>
+      <div class="orb orb-one"></div><div class="orb orb-two"></div>
+      <span class="panel-index">KAYNT · 01 / LIVE OBSERVER</span>
+    </section>
+
+    <section class="form-panel">
+      <div class="form-wrap">
+        <div class="mobile-brand"><span class="brand-mark" aria-hidden="true">K</span><b>Kaynt LiveHub</b></div>
+        <div class="form-heading">
+          <span class="eyebrow">CHÀO MỪNG TRỞ LẠI</span>
+          <h2>Đăng nhập</h2>
+          <p>Nhập mật khẩu truy cập để mở bảng điều khiển.</p>
+        </div>
+        {% if error %}
+        <div class="form-error" role="alert">{{ error }}</div>
+        {% endif %}
+        <form method="post" action="{{ url_for('login') }}" class="login-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <label for="password">Mật khẩu truy cập</label>
+          <div class="password-field">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+            <input id="password" name="password" type="password" placeholder="Nhập mật khẩu" autocomplete="current-password" required autofocus>
+          </div>
+          <button type="submit">Vào LiveHub <span aria-hidden="true">→</span></button>
+        </form>
+        <div class="secure-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/></svg><span>Kết nối được bảo vệ bằng phiên đăng nhập riêng tư.</span></div>
+        <footer>© Kaynt LiveHub <span>·</span> Live Observer</footer>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
