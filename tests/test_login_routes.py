@@ -31,6 +31,21 @@ class LoginRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login", response.location)
 
+    def test_reverse_proxy_forwarded_ip_is_used_for_local_only_settings(self) -> None:
+        with patch.object(web, "_password", return_value=""):
+            response = self.client.get(
+                "/api/settings",
+                environ_overrides={
+                    "REMOTE_ADDR": "127.0.0.1",
+                    "HTTP_X_FORWARDED_FOR": "203.0.113.10",
+                    "HTTP_X_FORWARDED_HOST": "livehub.example",
+                    "HTTP_X_FORWARDED_PROTO": "https",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json()["can_edit"])
+
     def test_login_uses_csrf_cookie_session_and_logout(self) -> None:
         with patch.object(web, "_password", return_value="test-password"):
             page = self.client.get("/login", environ_overrides=self.remote)

@@ -69,6 +69,34 @@ sudo systemctl enable --now livehub
 journalctl -u livehub -f                  # xem log
 ```
 
+### Đưa lên VPS bằng Nginx
+
+File cấu hình mẫu ở [`nginx.conf`](./nginx.conf) chuyển tiếp HTTP, SSE và WebSocket video tới app trên cổng `5000`.
+
+1. Trong `.env`, đặt `HOST=127.0.0.1`, `PORT=5000`, `ACCESS_PASSWORD` thành mật khẩu mạnh và `SECRET_KEY` thành giá trị riêng, ổn định (tạo bằng `python3 -c "import secrets; print(secrets.token_hex(32))"`). Không mở cổng `5000` ra Internet.
+2. Sao chép file cấu hình vào `/etc/nginx/conf.d/kaynt-livehub.conf`. Đổi `server_name _;` thành domain của bạn nếu có domain.
+3. Chạy app bằng `python3 headless.py` hoặc service riêng; kiểm tra và nạp lại Nginx:
+
+   ```bash
+   sudo nginx -t
+   sudo systemctl reload nginx
+   ```
+
+4. Cấu hình HTTPS cho domain (ví dụ Certbot); sau khi HTTPS hoạt động, đặt `SESSION_COOKIE_SECURE=true` trong `.env` rồi khởi động lại app.
+
+Có thể dùng PM2 thay systemd để quản lý tiến trình. Cài PM2 (`npm install -g pm2`), sau đó từ thư mục dự án:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install "TikTokLive==7.0.1" "Flask>=3.0" "flask-sock>=0.7" "httpx>=0.27" "python-dotenv>=1.0"
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+```
+
+PM2 dùng Python tại `.venv/bin/python`; hãy tạo và cài thư viện trong venv trước khi khởi chạy. Chạy lệnh `pm2 startup` theo hướng dẫn mà PM2 in ra để bật app cùng hệ thống. Dùng `pm2 logs kaynt-livehub` để xem log, `pm2 restart kaynt-livehub` để khởi động lại và `pm2 stop kaynt-livehub` để dừng.
+
 ## Cấu hình
 
 Cấu hình thường dùng (sessionid, API key, mật khẩu WiFi, danh sách phòng) nhập trong **tab Cài đặt / Phòng** của cửa sổ Kaynt LiveHub. File **`.env`** (mẫu: `.env.example`) vẫn dùng được cho các tuỳ chọn nâng cao bên dưới; ô nào trên giao diện để trống thì lấy từ `.env`.

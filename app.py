@@ -22,6 +22,7 @@ import httpx
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context, url_for
 from flask_sock import Sock
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_FILE = os.path.join(BASE_DIR, ".env")
@@ -42,6 +43,7 @@ from proxy_config import tiktok_proxy  # noqa: E402
 
 logging.getLogger("werkzeug").setLevel(logging.WARNING)  # bỏ log từng request cho đỡ rối
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 secret_key = os.environ.get("SECRET_KEY", "").strip()
 if not secret_key:
     secret_key = secrets.token_hex(32)
