@@ -95,6 +95,10 @@
         <span class="tname">Tất cả phòng</span>
         <span class="count" id="roomCount">0</span>
       </button>
+      <button class="tab special-tab" data-room="__special__">
+        <svg class="ic"><use href="#i-msg"/></svg>
+        <span class="tname">Chế độ Đặc biệt</span>
+      </button>
       <div class="nav-label">Đang theo dõi</div>
       <div id="roomTabs" class="room-list"></div>
     </nav>
@@ -136,6 +140,70 @@
         <span class="es-ic"><svg class="ic"><use href="#i-radio"/></svg></span>
         <h2>Chưa có phòng nào</h2>
         <p>Nhập <b>@username</b> ở ô <b>Thêm phòng live</b> bên trái (hoặc phía trên trên điện thoại) để bắt đầu theo dõi.</p>
+      </div>
+    </main>
+
+    <main id="viewSpecial" class="view special-view" hidden>
+      <header class="view-head">
+        <div>
+          <h1>Chế độ Đặc biệt</h1>
+          <p class="sub">Chat chung và đồng bộ block chỉ trong các room được chọn.</p>
+        </div>
+        <div class="special-summary" id="specialSummary">Chưa chọn room</div>
+      </header>
+      <section class="card special-rooms-card">
+        <div class="card-head">
+          <h2>Room tham gia</h2>
+          <span class="muted small">Chỉ room được chọn mới gộp chat và đồng bộ block</span>
+        </div>
+        <div id="specialRooms" class="special-room-options"></div>
+      </section>
+      <section class="card trusted-card">
+        <div class="card-head"><h2>Danh sách người nhà</h2><span class="muted small">Thẻ người nhà sẽ được làm nổi bật</span></div>
+        <form id="trustedForm" class="trusted-form">
+          <input id="trustedId" inputmode="numeric" placeholder="TikTok user ID" required>
+          <input id="trustedNickname" placeholder="Tên hiển thị (không bắt buộc)">
+          <input id="trustedNote" placeholder="Ghi chú (không bắt buộc)">
+          <button class="btn primary" type="submit">Lưu ID</button>
+        </form>
+        <div id="trustedUsers" class="trusted-users"></div>
+      </section>
+      <section class="card special-live-card">
+        <div class="card-head">
+          <h2><span class="live-dot"></span>Phiên live đang phát</h2>
+          <span class="muted small">Chất lượng theo lựa chọn ở tab Tất cả</span>
+        </div>
+        <div id="specialLiveRooms" class="special-live-grid"></div>
+      </section>
+      <div class="special-feeds-grid">
+        <section class="card feed-card special-feed-card">
+          <div class="card-head">
+            <h2><span class="live-dot"></span>Chat &amp; quà</h2>
+            <label class="switch small"><input type="checkbox" id="specialChatAutoScroll" checked><span></span>Tự cuộn</label>
+          </div>
+          <div class="filters" id="specialChatFilters" aria-label="Lọc chat và quà">
+            <button data-k="comment" class="on">Bình luận</button>
+            <button data-k="gift" class="on">Quà</button>
+            <button data-k="system" class="on">Hệ thống</button>
+          </div>
+          <div class="field search-field"><input id="specialChatSearch" type="search" placeholder="Tìm trong bình luận và quà" aria-label="Tìm chat và quà"></div>
+          <ul id="specialChatFeed" class="feed" aria-live="off"></ul>
+        </section>
+        <section class="card feed-card special-feed-card">
+          <div class="card-head">
+            <h2><span class="live-dot"></span>Sự kiện người xem</h2>
+            <label class="switch small"><input type="checkbox" id="specialEventAutoScroll" checked><span></span>Tự cuộn</label>
+          </div>
+          <div class="filters" id="specialEventFilters" aria-label="Lọc sự kiện người xem">
+            <button data-k="join" class="on">Vào phòng</button>
+            <button data-k="barrage" class="on">Bay vào</button>
+            <button data-k="follow" class="on">Theo dõi</button>
+            <button data-k="share" class="on">Chia sẻ</button>
+            <button data-k="like">Thích</button>
+          </div>
+          <div class="field search-field"><input id="specialEventSearch" type="search" placeholder="Tìm trong sự kiện người xem" aria-label="Tìm sự kiện người xem"></div>
+          <ul id="specialEventFeed" class="feed" aria-live="off"></ul>
+        </section>
       </div>
     </main>
 

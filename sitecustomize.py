@@ -23,4 +23,15 @@ def _patch_tiktok_live_client() -> None:
     TikTokLiveClient.__init__ = compat_init
 
 
+def _rebuild_tiktok_hashtag_model() -> None:
+    """Resolve the generated forward ref before parse(data: bytes) can shadow its module name."""
+    from pydantic.dataclasses import rebuild_dataclass
+    from TikTokLiveProto.v3.webcast.model import Hashtag
+
+    rebuilt = rebuild_dataclass(Hashtag, force=True, _parent_namespace_depth=0)
+    if rebuilt is False:
+        raise RuntimeError("Could not resolve TikTokLiveProto Hashtag type references")
+
+
 _patch_tiktok_live_client()
+_rebuild_tiktok_hashtag_model()

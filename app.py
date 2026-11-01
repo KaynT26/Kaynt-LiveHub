@@ -187,6 +187,7 @@ def index():
 @app.get("/api/state")
 def api_state():
     return jsonify({**hub.snapshot(),
+                    "special_mode": _special_public(),
                     "lan": {"urls": lan_urls(), "password": bool(_password()),
                             "is_local": request.remote_addr in LOCAL_ADDRS}})
 
@@ -263,14 +264,92 @@ def api_block_user(uid: str):
     if not user_id.isdigit():
         return jsonify({"ok": False, "error": "Thiếu user_id"}), 400
     try:
-        room_id = hub.room_ids(uid)["room_id"]
+        room_info = hub.room_ids(uid)
+        room_id = room_info["room_id"]
         if not room_id:
             raise moderation.ModError("Phòng chưa kết nối – chưa có room_id")
+        if str(room_info.get("owner_id") or "") == user_id:
+            raise moderation.ModError("Không thể chặn chủ phòng")
         hub._call(moderation.block_user(room_id, user_id), 30)
+        store.record_block(user_id, uid)
     except Exception as ex:
         app.logger.warning("Không thể chặn user %s trong phòng @%s: %s", user_id, uid, ex)
         return _err(ex)
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "blocked_users": store.get().get("blocked_users", {})})
+
+
+def _special_public() -> dict:
+    cfg = store.get()
+    return {
+        "rooms": cfg.get("special_rooms", []),
+        "trusted_users": cfg.get("trusted_users", []),
+        "blocked_users": cfg.get("blocked_users", {}),
+    }
+
+
+@app.get("/api/special-mode")
+def api_special_mode_get():
+    return jsonify({"ok": True, **_special_public()})
+
+
+@app.post("/api/special-mode")
+def api_special_mode_post():
+    room_uids = _body().get("rooms")
+    if not isinstance(room_uids, list) or any(not isinstance(uid, str) for uid in room_uids):
+        return jsonify({"ok": False, "error": "Danh sách room không hợp lệ"}), 400
+    available = {str(room.get("unique_id", "")).lower() for room in hub.snapshot().get("rooms", [])}
+    requested = list(dict.fromkeys(uid.strip().lower() for uid in room_uids if uid.strip()))
+    unknown = [uid for uid in requested if uid not in available]
+    if unknown:
+        return jsonify({"ok": False, "error": "Room không còn trong danh sách: " + ", ".join(unknown)}), 400
+    store.set_special_rooms(requested)
+    return jsonify({"ok": True, **_special_public()})
+
+
+@app.post("/api/trusted-users")
+def api_trusted_user_add():
+    try:
+        store.save_trusted_user(_body())
+    except ValueError as ex:
+        return _err(ex)
+    return jsonify({"ok": True, **_special_public()})
+
+
+@app.delete("/api/trusted-users/<user_id>")
+def api_trusted_user_remove(user_id: str):
+    if not user_id.isdigit():
+        return jsonify({"ok": False, "error": "ID người dùng không hợp lệ"}), 400
+    store.remove_trusted_user(user_id)
+    return jsonify({"ok": True, **_special_public()})
+
+
+@app.post("/api/special-mode/block-user")
+def api_special_block_user():
+    if not _block_allowed():
+        return jsonify({"ok": False, "error": "Chỉ máy chạy app (hoặc máy WiFi khi đã đặt mật khẩu) được quản trị phòng"}), 403
+    user_id = str(_body().get("user_id") or "").strip()
+    if not user_id.isdigit():
+        return jsonify({"ok": False, "error": "Thiếu user_id"}), 400
+
+    selected = store.get().get("special_rooms", [])
+    if not selected:
+        return jsonify({"ok": False, "error": "Chưa chọn room nào trong Chế độ Đặc biệt"}), 400
+    statuses = []
+    for uid in selected:
+        try:
+            room_info = hub.room_ids(uid)
+            room_id = room_info["room_id"]
+            if not room_id:
+                raise moderation.ModError("Phòng chưa kết nối hoặc chưa có room_id")
+            if str(room_info.get("owner_id") or "") == user_id:
+                raise moderation.ModError("Không thể chặn chủ phòng")
+            hub._call(moderation.block_user(room_id, user_id), 30)
+            store.record_block(user_id, uid)
+            statuses.append({"room": uid, "ok": True})
+        except Exception as ex:
+            app.logger.warning("Không thể chặn user %s trong phòng @%s: %s", user_id, uid, ex)
+            statuses.append({"room": uid, "ok": False, "error": str(ex)})
+    return jsonify({"ok": True, "statuses": statuses, **_special_public()})
 
 
 @app.post("/api/config/reload")

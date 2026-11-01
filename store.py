@@ -24,6 +24,9 @@ DEFAULTS: Dict[str, Any] = {
     "version": 1,
     "autostart": True,          # mở app là tự kết nối các phòng đã lưu
     "rooms": [],                # [{"unique_id", "auto_reconnect", "auto_record", "room_id"}]
+    "special_rooms": [],
+    "trusted_users": [],
+    "blocked_users": {},
     "session": {"sessionid": "", "target_idc": "", "mode": "auto", "consent": False},
     "sign_api_key": "",
     "access_password": "",
@@ -120,7 +123,49 @@ def save_room_id(uid: str, room_id: str | int) -> None:
 
 
 def forget_room(uid: str) -> None:
-    update(lambda d: d.__setitem__("rooms", [r for r in d["rooms"] if r["unique_id"] != uid]))
+    def fn(d: Dict[str, Any]) -> None:
+        d["rooms"] = [r for r in d["rooms"] if r["unique_id"] != uid]
+        d["special_rooms"] = [room for room in d.get("special_rooms", []) if str(room).lower() != uid.lower()]
+    update(fn)
+
+
+def set_special_rooms(room_uids: List[str]) -> None:
+    normalized = list(dict.fromkeys(str(uid).strip().lower() for uid in room_uids if str(uid).strip()))
+    update(lambda d: d.__setitem__("special_rooms", normalized))
+
+
+def save_trusted_user(user: Dict[str, str]) -> None:
+    user_id = str(user.get("id") or "").strip()
+    if not user_id.isdigit():
+        raise ValueError("ID người dùng phải là số")
+    entry = {
+        "id": user_id,
+        "nickname": str(user.get("nickname") or "").strip()[:80],
+        "unique_id": str(user.get("unique_id") or "").strip().lstrip("@")[:80],
+        "category": "family",
+        "note": str(user.get("note") or "").strip()[:200],
+    }
+
+    def fn(d: Dict[str, Any]) -> None:
+        users = d.setdefault("trusted_users", [])
+        users[:] = [item for item in users if str(item.get("id")) != user_id]
+        users.append(entry)
+    update(fn)
+
+
+def remove_trusted_user(user_id: str) -> None:
+    update(lambda d: d.__setitem__(
+        "trusted_users", [user for user in d.get("trusted_users", []) if str(user.get("id")) != user_id]
+    ))
+
+
+def record_block(user_id: str, room_uid: str) -> None:
+    def fn(d: Dict[str, Any]) -> None:
+        blocked = d.setdefault("blocked_users", {})
+        rooms_for_user = blocked.setdefault(user_id, [])
+        if room_uid not in rooms_for_user:
+            rooms_for_user.append(room_uid)
+    update(fn)
 
 
 # ----------------------------------------------------------------- giá trị hiệu lực (giao diện > .env)

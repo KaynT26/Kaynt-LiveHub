@@ -5,6 +5,7 @@ Web app (Flask + TikTokLive) để theo dõi **nhiều phiên TikTok LIVE cùng 
 - **Nhiều phòng**: mỗi phòng một tab (xem chi tiết), tab **Tất cả** hiện lưới video nhỏ + số liệu + bình luận mới nhất của mọi phòng. Mặc định tối đa 12 phòng (`MAX_ROOMS`).
 - **Video live** phát ngay trên trang (FLV qua mpegts.js, Flask chuyển tiếp luồng để tránh lỗi CORS/Referer), chọn chất lượng HD/SD/LD…
 - **Hoạt động trực tiếp**: bình luận, quà (gộp combo đang chạy vào 1 dòng), theo dõi, chia sẻ, vào phòng, thả tim – có bộ lọc và ô tìm kiếm.
+- **Chế độ Đặc biệt**: chọn room để xem video live, chat/quà chung và sự kiện người xem ở các khu riêng; block đồng bộ chỉ áp dụng với room đã chọn. Có danh sách ID người nhà và trạng thái block trên thẻ user.
 - **Thống kê**: người xem (và đỉnh), bình luận, kim cương/quà, lượt thích, vào phòng, theo dõi/chia sẻ, thời gian đã theo dõi.
 - **Biểu đồ diễn biến** (mỗi 10 giây một điểm, giữ 1 giờ): người xem, bình luận, tim, kim cương.
 - **Top tặng quà / Top bình luận**.

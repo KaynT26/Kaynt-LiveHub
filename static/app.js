@@ -42,8 +42,20 @@
     search: "", giftRows: new Map(),  // gift key -> <li> (của phòng đang mở)
     detailPlayer: null, detailWanted: true,
     tilePlayers: new Map(),           // uid -> {player, q}
+    specialPlayers: new Map(),
     playerErrAt: new Map(),           // uid -> thời điểm lỗi gần nhất (tránh thử lại liên tục)
   };
+  const special = {
+    rooms: new Set(), trusted: [], blocked: {},
+    chatFilters: new Set(["comment", "gift", "system"]),
+    eventFilters: new Set(["join", "barrage", "follow", "share"]),
+  };
+  let specialChatRows = new WeakMap();
+  let specialEventRows = new WeakMap();
+  const SPECIAL_CHAT_KINDS = new Set(["comment", "gift", "system"]);
+  const specialScrollFrames = new WeakMap();
+  let specialLiveSignature = null;
+  const SPECIAL_UID = "__special__";
 
   function newRoom(s) {
     return {
@@ -94,6 +106,7 @@
       : `<div class="room-empty">Chưa theo dõi phòng nào</div>`;
     markActiveTab();
     updateSummary();
+    renderSpecialRooms();
   }
   function markActiveTab() {
     document.querySelectorAll("#tabs .tab").forEach((b) => {
@@ -129,6 +142,113 @@
     el.innerHTML = rooms.size ? `<b>${live}</b>/${rooms.size} phòng đang live` : "Chưa có phòng nào";
   }
 
+  function renderSpecialRooms() {
+    const options = [...rooms.values()];
+    $("specialRooms").innerHTML = options.length
+      ? options.map((r) => `<label class="special-room-option">
+          <input type="checkbox" data-special-room="${esc(r.uid)}" ${special.rooms.has(r.uid.toLowerCase()) ? "checked" : ""}>
+          <span class="special-room-name">${esc(r.room?.nickname || "@" + r.uid)}</span>
+          <span class="chip sm ${esc(r.status)}">${esc(STATUS_TEXT[r.status] || r.status)}</span>
+        </label>`).join("")
+      : `<div class="muted small">Thêm room ở thanh bên để chọn vào chế độ này.</div>`;
+    $("specialSummary").textContent = `${special.rooms.size} room được chọn`;
+    renderSpecialLiveRooms();
+  }
+
+  function renderSpecialLiveRooms() {
+    const selected = [...special.rooms].map((uid) => rooms.get(uid)).filter(Boolean);
+    const signature = selected.map((r) => [
+      r.uid, r.status, r.room?.nickname || "", r.room?.title || "", (r.qualities || []).join(","),
+    ].join(":")).join("|");
+    if (signature === specialLiveSignature) return;
+    specialLiveSignature = signature;
+    ui.specialPlayers.forEach((entry) => killPlayer(entry.player));
+    ui.specialPlayers.clear();
+    const host = $("specialLiveRooms");
+    if (!selected.length) {
+      host.innerHTML = `<div class="muted small">Chọn room phía trên để xem các phiên live tại đây.</div>`;
+      return;
+    }
+    host.innerHTML = selected.map((r) => {
+      const isLive = r.status === "connected" && r.qualities.length > 0;
+      const playable = isLive && canPlay();
+      return `<article class="special-live-tile" data-special-tile="${esc(r.uid)}">
+        <div class="special-live-title"><b>${esc(r.room?.nickname || "@" + r.uid)}</b>
+          <span class="chip sm ${esc(r.status)}">${esc(STATUS_TEXT[r.status] || r.status)}</span></div>
+        ${r.room?.title ? `<div class="special-live-sub">${esc(r.room.title)}</div>` : ""}
+        <div class="special-live-video">
+          <video data-special-video="${esc(r.uid)}" muted playsinline controls ${playable ? "" : "hidden"}></video>
+          <div class="video-empty" data-special-video-empty>${playable ? "Đang tải video…" : isLive ? "Trình duyệt không hỗ trợ phát video live" : esc(STATUS_TEXT[r.status] || "Đang chờ live")}</div>
+        </div>
+      </article>`;
+    }).join("");
+    syncSpecialPlayers();
+  }
+
+  function trustedUser(id) {
+    return special.trusted.find((user) => String(user.id) === String(id));
+  }
+
+  function renderTrustedUsers() {
+    $("trustedUsers").innerHTML = special.trusted.length
+      ? special.trusted.map((user) => `<div class="trusted-user">
+          <span class="trusted-tag family">Người nhà</span>
+          <span class="trusted-info"><b>${esc(user.nickname || user.unique_id || user.id)}</b>
+            <small>ID ${esc(user.id)}${user.note ? " · " + esc(user.note) : ""}</small></span>
+          <button class="btn sm ghost" data-trusted-delete="${esc(user.id)}" aria-label="Xóa ID tin cậy">Xóa</button>
+        </div>`).join("")
+      : `<div class="muted small">Chưa lưu ID tin cậy nào.</div>`;
+  }
+
+  function updateSpecialState(data) {
+    special.rooms = new Set((data.rooms || []).map((uid) => String(uid).toLowerCase()));
+    special.trusted = data.trusted_users || [];
+    special.blocked = data.blocked_users || {};
+    renderSpecialRooms();
+    renderTrustedUsers();
+    if (ui.active === SPECIAL_UID) renderSpecialFeed();
+  }
+
+  $("specialRooms").addEventListener("change", async (e) => {
+    const input = e.target.closest("[data-special-room]");
+    if (!input) return;
+    const selected = [...$("specialRooms").querySelectorAll("[data-special-room]:checked")]
+      .map((el) => el.dataset.specialRoom.toLowerCase());
+    input.disabled = true;
+    try {
+      updateSpecialState(await api("POST", "/api/special-mode", { rooms: selected }));
+      toast("Đã lưu danh sách room của Chế độ Đặc biệt", "ok", 2500);
+    } catch (err) {
+      input.checked = !input.checked;
+      toast(err.message, "err");
+    } finally {
+      input.disabled = false;
+    }
+  });
+
+  $("trustedForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = $("trustedId").value.trim();
+    try {
+      const data = await api("POST", "/api/trusted-users", {
+        id, nickname: $("trustedNickname").value.trim(), category: "family",
+        note: $("trustedNote").value.trim(),
+      });
+      updateSpecialState(data);
+      $("trustedForm").reset();
+      toast("Đã lưu ID vào danh sách tin cậy", "ok", 2500);
+    } catch (err) { toast(err.message, "err"); }
+  });
+
+  $("trustedUsers").addEventListener("click", async (e) => {
+    const button = e.target.closest("[data-trusted-delete]");
+    if (!button) return;
+    try {
+      updateSpecialState(await api("DELETE", `/api/trusted-users/${enc(button.dataset.trustedDelete)}`));
+      toast("Đã xóa ID khỏi danh sách tin cậy", "ok", 2500);
+    } catch (err) { toast(err.message, "err"); }
+  });
+
   $("tabs").addEventListener("click", (e) => {
     const x = e.target.closest("[data-close]");
     if (x) { e.stopPropagation(); closeRoom(x.dataset.close); return; }
@@ -137,16 +257,18 @@
   });
 
   function switchTo(uid) {
-    if (uid && !rooms.has(uid)) uid = "";
+    if (uid && uid !== SPECIAL_UID && !rooms.has(uid)) uid = "";
     ui.active = uid;
-    try { history.replaceState(null, "", uid ? "#" + uid : location.pathname); } catch (_) {}
+    try { history.replaceState(null, "", uid && uid !== SPECIAL_UID ? "#" + uid : location.pathname); } catch (_) {}
     markActiveTab();
     $("viewAll").hidden = !!uid;
-    $("viewRoom").hidden = !uid;
+    $("viewRoom").hidden = !uid || uid === SPECIAL_UID;
+    $("viewSpecial").hidden = uid !== SPECIAL_UID;
     ui.detailWanted = true;
-    if (uid) renderDetail();
+    if (uid === SPECIAL_UID) renderSpecialFeed();
+    else if (uid) renderDetail();
     syncPlayers();
-    if (uid && rooms.get(uid).status === "choose") askChoice(uid);   // phòng đang chờ chọn phiên -> hỏi luôn
+    if (uid && uid !== SPECIAL_UID && rooms.get(uid).status === "choose") askChoice(uid);   // phòng đang chờ chọn phiên -> hỏi luôn
   }
 
   // ------------------------------------------------------------ wall (lưới)
@@ -295,22 +417,41 @@
     if (!u || !u.id) return "";
     const r = rooms.get(roomUid);
     if (r && r.room && String(r.room.owner_id) === String(u.id)) return "";
-    return `
-      <div class="uc-mod">
-        <div class="uc-sub">${ic("ban")}Chặn khỏi phòng này</div>
-        <div class="uc-mod-row">
-          <button class="btn sm danger" data-act="block">${ic("ban")}Chặn user</button>
-        </div>
-      </div>`;
+    const known = trustedUser(u.id);
+    const recorded = special.blocked[String(u.id)] || [];
+    const selectedCount = special.rooms.size;
+    const blockedCount = ui.active === SPECIAL_UID
+      ? [...special.rooms].filter((uid) => recorded.some((room) => room.toLowerCase() === uid)).length
+      : recorded.length;
+    const scope = ui.active === SPECIAL_UID
+      ? (blockedCount ? `${blockedCount}/${selectedCount} room đã block` : "")
+      : (blockedCount ? `Đã block ở ${blockedCount} room` : "");
+    return `${known ? `<span class="uc-status trusted family">${ic("heart")}Người nhà${known.note ? " · " + esc(known.note) : ""}</span>` : ""}
+      ${scope ? `<span class="uc-status blocked">${ic("ban")}${scope}</span>` : ""}`;
+  }
+  function blockButtonHTML(roomUid, u) {
+    const r = rooms.get(roomUid);
+    if (!u?.id || (r?.room && String(r.room.owner_id) === String(u.id))) return "";
+    return `<button class="btn sm danger" data-act="block">${ic("ban")}Chặn user</button>`;
   }
   async function blockUser(roomUid, u, btn) {
+    const context = ucard._ctx;
     const old = btn.innerHTML; btn.disabled = true; btn.textContent = "Đang gửi…";
     try {
-      const j = await (await fetch(`/api/rooms/${enc(roomUid)}/block-user`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: String(u.id) })
-      })).json();
-      if (!j.ok) throw new Error(j.error || "Thất bại");
+      const isSpecial = ui.active === SPECIAL_UID && special.rooms.has(roomUid.toLowerCase());
+      const j = await api("POST", isSpecial ? "/api/special-mode/block-user" : roomUrl(roomUid, "/block-user"), { user_id: String(u.id) });
+      if (j.blocked_users) special.blocked = j.blocked_users;
+      if (j.trusted_users) special.trusted = j.trusted_users;
+      if (j.rooms) special.rooms = new Set(j.rooms.map((uid) => uid.toLowerCase()));
+      const results = j.statuses || [{ room: roomUid, ok: true }];
+      const succeeded = results.filter((result) => result.ok).length;
+      const failed = results.filter((result) => !result.ok);
+      toast(failed.length
+        ? `Đã block ${succeeded}/${results.length} room.\n${failed.map((result) => `@${result.room}: ${result.error}`).join("\n")}`
+        : (isSpecial ? `Đã block ${succeeded} room được chọn` : `Đã block user trong @${roomUid}`),
+      failed.length ? "err" : "ok", 6500);
+      if (ucard._ctx === context) ucard.innerHTML = cardHTML(context.u, context.data);
+      renderTrustedUsers();
     } catch (ex) { toast(ex.message, "err"); }
     finally { btn.disabled = false; btn.innerHTML = old; }
   }
@@ -468,6 +609,190 @@
     return li.dataset.q.includes(ui.search);
   }
 
+  function renderSpecialFeed() {
+    if (!$("specialChatFeed")) return;
+    const events = [];
+    special.rooms.forEach((uid) => {
+      const r = rooms.get(uid);
+      if (r) r.events.forEach((ev) => events.push({ uid: r.uid, ev }));
+    });
+    events.sort((a, b) => (a.ev.ts || 0) - (b.ev.ts || 0));
+    const chat = [], activity = [];
+    specialChatRows = new WeakMap();
+    specialEventRows = new WeakMap();
+    events.slice(-MAX_FEED * 2).forEach(({ uid, ev }) => {
+      const isChat = SPECIAL_CHAT_KINDS.has(ev.kind);
+      const li = createSpecialEventLi(uid, ev, isChat);
+      (isChat ? chat : activity).push(li);
+    });
+    populateSpecialFeed("specialChatFeed", chat, special.rooms.size
+      ? "Chưa có bình luận hoặc quà trong các room đã chọn." : "Chọn room để xem bình luận và quà.");
+    populateSpecialFeed("specialEventFeed", activity, special.rooms.size
+      ? "Chưa có sự kiện người xem trong các room đã chọn." : "Chọn room để xem người vào phòng và sự kiện.");
+  }
+
+  function createSpecialEventLi(uid, ev, isChat) {
+    const r = rooms.get(uid);
+    const li = document.createElement("li");
+    li.className = specialEventClassName(ev);
+    li.dataset.kind = ev.kind;
+    li.dataset.room = uid;
+    li.dataset.q = [ev.user?.nickname, ev.user?.unique_id, ev.text, ev.gift, uid].filter(Boolean).join(" ").toLowerCase();
+    li.innerHTML = specialEventHTML(uid, ev, r);
+    li._user = ev.user;
+    const filters = isChat ? special.chatFilters : special.eventFilters;
+    li.classList.toggle("hide", !filters.has(ev.kind) || !specialSearchMatches(li, isChat));
+    (isChat ? specialChatRows : specialEventRows).set(ev, li);
+    return li;
+  }
+
+  function specialEventClassName(ev) {
+    const familyArrival = isArrivalEvent(ev) && ev.user?.id && trustedUser(ev.user.id);
+    return ev.kind + (ACT[ev.kind] ? " compact" : "") + (ev.streaking ? " streak" : "") + (familyArrival ? " family" : "");
+  }
+
+  function appendSpecialEvent(uid, ev) {
+    const isChat = SPECIAL_CHAT_KINDS.has(ev.kind);
+    const feedId = isChat ? "specialChatFeed" : "specialEventFeed";
+    const feed = $(feedId);
+    if (!feed || !special.rooms.has(uid.toLowerCase())) return;
+    const followLatest = feed.scrollHeight - feed.clientHeight - feed.scrollTop < 96;
+    const rows = isChat ? specialChatRows : specialEventRows;
+    let li = rows.get(ev);
+    if (li?.isConnected) {
+      const r = rooms.get(uid);
+      li.className = specialEventClassName(ev);
+      li.dataset.q = [ev.user?.nickname, ev.user?.unique_id, ev.text, ev.gift, uid].filter(Boolean).join(" ").toLowerCase();
+      li.innerHTML = specialEventHTML(uid, ev, r);
+      li._user = ev.user;
+    } else {
+      if (feed.querySelector(".empty")) feed.replaceChildren();
+      li = createSpecialEventLi(uid, ev, isChat);
+      feed.appendChild(li);
+    }
+    const filters = isChat ? special.chatFilters : special.eventFilters;
+    li.classList.toggle("hide", !filters.has(ev.kind) || !specialSearchMatches(li, isChat));
+    while (feed.children.length > MAX_FEED) feed.firstElementChild.remove();
+    const autoScroll = $(isChat ? "specialChatAutoScroll" : "specialEventAutoScroll");
+    if (autoScroll.checked && followLatest) scheduleSpecialFeedScroll(feed);
+  }
+
+  function isArrivalEvent(ev) {
+    return ev.kind === "join" || (ev.kind === "barrage" && ["entrance", "fan_entrance", "enigma_entrance"].includes(ev.sub));
+  }
+
+  function specialEventHTML(uid, ev, room) {
+    let body = eventHTML(ev);
+    const roomName = room?.room?.nickname || "@" + uid;
+    const roomBadge = `<span class="special-event-room" title="${esc(roomName)}">${esc(roomName)}</span>`;
+    const content = `<div class="special-event-content">${roomBadge}${body}</div>`;
+    if (!isArrivalEvent(ev) || !ev.user?.id || String(room?.room?.owner_id || "") === String(ev.user.id)) return content;
+    const blocked = special.blocked[String(ev.user.id)] || [];
+    const inSelected = [...special.rooms].filter((selected) => blocked.some((name) => name.toLowerCase() === selected)).length;
+    const status = inSelected ? `<span class="special-quick-block-status">Đã block ${inSelected}/${special.rooms.size}</span>` : "";
+    const button = `<span class="special-quick-block-wrap"><button class="btn sm danger special-quick-block" data-special-block>${ic("ban")}Chặn</button>${status}</span>`;
+    body = body.replace("</time>", `</time>${button}`);
+    return `<div class="special-event-content">${roomBadge}${body}</div>`;
+  }
+
+  $("specialEventFeed").addEventListener("click", async (e) => {
+    const button = e.target.closest("[data-special-block]");
+    if (!button) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const li = button.closest("li");
+    const user = li?._user;
+    if (!user?.id) return;
+    button.disabled = true;
+    const previous = button.innerHTML;
+    button.textContent = "Đang chặn…";
+    try {
+      const result = await api("POST", "/api/special-mode/block-user", { user_id: String(user.id) });
+      special.blocked = result.blocked_users || special.blocked;
+      const statuses = result.statuses || [];
+      const succeeded = statuses.filter((status) => status.ok).length;
+      const failed = statuses.filter((status) => !status.ok);
+      toast(failed.length
+        ? `Đã block ${succeeded}/${statuses.length} room.\n${failed.map((status) => `@${status.room}: ${status.error}`).join("\n")}`
+        : `Đã block ${succeeded} room được chọn`,
+      failed.length ? "err" : "ok", 6500);
+      const wrap = button.closest(".special-quick-block-wrap");
+      if (wrap && succeeded) {
+        button.textContent = `Đã block ${succeeded}/${statuses.length}`;
+        let status = wrap.querySelector(".special-quick-block-status");
+        if (!status) {
+          status = document.createElement("span");
+          status.className = "special-quick-block-status";
+          wrap.appendChild(status);
+        }
+        status.textContent = `${succeeded}/${special.rooms.size} room`;
+      } else {
+        button.disabled = false;
+        button.innerHTML = previous;
+      }
+    } catch (err) {
+      toast(err.message, "err");
+      button.disabled = false;
+      button.innerHTML = previous;
+    }
+  });
+
+  function scheduleSpecialFeedScroll(feed) {
+    if (specialScrollFrames.has(feed)) return;
+    const frame = requestAnimationFrame(() => {
+      specialScrollFrames.delete(feed);
+      if (feed.scrollHeight - feed.clientHeight - feed.scrollTop > 96) return;
+      feed.scrollTo({ top: feed.scrollHeight, behavior: "smooth" });
+    });
+    specialScrollFrames.set(feed, frame);
+  }
+
+  function specialSearchMatches(li, isChat) {
+    const input = $(isChat ? "specialChatSearch" : "specialEventSearch");
+    return !input.value.trim() || li.dataset.q.includes(input.value.trim().toLowerCase());
+  }
+
+  function populateSpecialFeed(id, items, emptyText) {
+    const feed = $(id);
+    feed.replaceChildren();
+    if (!items.length) {
+      feed.innerHTML = `<li class="empty">${esc(emptyText)}</li>`;
+      return;
+    }
+    items.forEach((li) => feed.appendChild(li));
+    const autoScroll = $(id === "specialChatFeed" ? "specialChatAutoScroll" : "specialEventAutoScroll");
+    if (autoScroll.checked) feed.scrollTop = feed.scrollHeight;
+  }
+
+  function refilterSpecial(id, isChat, filters) {
+    const q = $(isChat ? "specialChatSearch" : "specialEventSearch").value.trim().toLowerCase();
+    for (const li of $(id).children) {
+      li.classList.toggle("hide", !filters.has(li.dataset.kind) || (q && !li.dataset.q.includes(q)));
+    }
+  }
+
+  function setupSpecialFilters(id, feedId, isChat, filters) {
+    $(id).addEventListener("click", (e) => {
+      const button = e.target.closest("button[data-k]");
+      if (!button) return;
+      const kind = button.dataset.k;
+      filters.has(kind) ? filters.delete(kind) : filters.add(kind);
+      button.classList.toggle("on", filters.has(kind));
+      refilterSpecial(feedId, isChat, filters);
+    });
+    $(`${isChat ? "specialChat" : "specialEvent"}Search`).addEventListener("input", () => refilterSpecial(feedId, isChat, filters));
+  }
+  setupSpecialFilters("specialChatFilters", "specialChatFeed", true, special.chatFilters);
+  setupSpecialFilters("specialEventFilters", "specialEventFeed", false, special.eventFilters);
+  ["specialChat", "specialEvent"].forEach((prefix) => {
+    $(`${prefix}AutoScroll`).addEventListener("change", () => {
+      if ($(`${prefix}AutoScroll`).checked) {
+        const feed = $(`${prefix === "specialChat" ? "specialChatFeed" : "specialEventFeed"}`);
+        scheduleSpecialFeedScroll(feed);
+      }
+    });
+  });
+
   function addEventLi(ev, bulk = false) {
     const feed = $("feed");
     let li = null;
@@ -523,6 +848,7 @@
   function cardHTML(u, d) {
     const st = d && d.stats;
     const link = `https://www.tiktok.com/@${encodeURIComponent(u.unique_id || "")}`;
+    ucard.classList.toggle("family", !!trustedUser(u.id));
     const stat = (icon, label, v) => `<div><span>${icon} ${label}</span><b>${v}</b></div>`;
     let body;
     if (d === undefined) body = `<div class="muted small uc-pad">Đang tải…</div>`;
@@ -558,19 +884,21 @@
         <button class="uc-x" data-close aria-label="Đóng" title="Đóng (Esc)">${ic("x")}</button>
       </div>
       <div class="uc-badges">${badgesHTML(u, true) || `<span class="muted small">Không có huy hiệu</span>`}</div>
-      ${blockHTML(ucard._ctx && ucard._ctx.roomUid, u)}
+      <div class="uc-user-state">${blockHTML(ucard._ctx && ucard._ctx.roomUid, u)}</div>
       ${body}
       <div class="uc-actions">
         <a class="btn sm primary" href="${link}" target="_blank" rel="noopener noreferrer">${ic("external")}Mở TikTok</a>
+        ${blockButtonHTML(ucard._ctx && ucard._ctx.roomUid, u)}
         <button class="btn sm" data-act="filter">${ic("filter")}Lọc bình luận</button>
         <button class="btn sm" data-act="copy">${ic("copy")}Copy @id</button>
+        ${trustedUser(u.id) ? "" : `<button class="btn sm family-action" data-act="trust-family">${ic("heart")}Đánh dấu người nhà</button>`}
       </div>`;
   }
 
-  async function openUserCard(roomUid, u, anchor) {
+  async function openUserCard(roomUid, u, anchor, eventKind = "") {
     if (!u || !u.id) return;
     const seq = ++ucardSeq;
-    ucard._ctx = { roomUid, u };
+    ucard._ctx = { roomUid, u, data: undefined, eventKind };
     ucard.innerHTML = cardHTML(u, undefined);
     ucard.hidden = false;
     placeCard(anchor);
@@ -582,7 +910,7 @@
     } catch (_) {}
     if (seq !== ucardSeq) return;
     const user = (d && d.user) ? { ...u, ...d.user } : u;
-    ucard._ctx.u = user;
+    ucard._ctx.u = user; ucard._ctx.data = d;
     ucard.innerHTML = cardHTML(user, d);
     placeCard(anchor);
   }
@@ -596,9 +924,26 @@
       catch (_) { prompt("Copy:", "@" + ctx.u.unique_id); }
     } else if (act === "block") {
       blockUser(ctx.roomUid, ctx.u, e.target.closest("button"));
+    } else if (act === "trust-family") {
+      try {
+        const data = await api("POST", "/api/trusted-users", {
+          id: String(ctx.u.id), nickname: ctx.u.nickname || "", unique_id: ctx.u.unique_id || "",
+          category: "family", note: trustedUser(ctx.u.id)?.note || "",
+        });
+        updateSpecialState(data);
+        if (ucard._ctx === ctx) ucard.innerHTML = cardHTML(ctx.u, ctx.data);
+        toast("Đã lưu ID vào danh sách tin cậy", "ok", 2500);
+      } catch (err) { toast(err.message, "err"); }
     } else if (act === "filter") {
-      if (ui.active !== ctx.roomUid) switchTo(ctx.roomUid);
-      $("search").value = ctx.u.unique_id; ui.search = String(ctx.u.unique_id).toLowerCase(); refilter();
+      if (ui.active === SPECIAL_UID) {
+        const isChat = ["comment", "gift", "system"].includes(ctx.eventKind);
+        const input = $(isChat ? "specialChatSearch" : "specialEventSearch");
+        input.value = ctx.u.unique_id || ctx.u.nickname;
+        refilterSpecial(isChat ? "specialChatFeed" : "specialEventFeed", isChat, isChat ? special.chatFilters : special.eventFilters);
+      } else {
+        if (ui.active !== ctx.roomUid) switchTo(ctx.roomUid);
+        $("search").value = ctx.u.unique_id; ui.search = String(ctx.u.unique_id).toLowerCase(); refilter();
+      }
       closeUserCard();
     }
   });
@@ -606,10 +951,10 @@
     const trg = e.target.closest("[data-user]");
     if (trg) {
       const li = trg.closest("li");
-      let u = li && li._user, room = ui.active;
+      let u = li && li._user, room = ui.active === SPECIAL_UID ? li?.dataset.room : ui.active;
       if (!u && li && li.dataset.i !== undefined) { const it = topItems(cur())[+li.dataset.i]; u = it && it.user; }
       const tile = trg.closest(".tile"); if (tile) room = tile.dataset.room;
-      if (u && room) { e.stopPropagation(); openUserCard(room, u, trg); }
+      if (u && room) { e.stopPropagation(); openUserCard(room, u, trg, li?.dataset.kind || ""); }
       return;
     }
     if (!ucard.hidden && !e.target.closest("#userCard")) closeUserCard();
@@ -684,6 +1029,39 @@
     t.querySelector(".mute").hidden = false;
   }
 
+  function syncSpecialPlayers() {
+    const shouldPlay = ui.active === SPECIAL_UID && canPlay();
+    for (const [uid, entry] of [...ui.specialPlayers]) {
+      const r = rooms.get(uid);
+      if (!shouldPlay || !special.rooms.has(uid.toLowerCase()) || !r || r.status !== "connected" ||
+          !r.qualities.length || !r.qualities.includes(entry.q) || entry.q !== wallQuality(r)) {
+        killPlayer(entry.player);
+        ui.specialPlayers.delete(uid);
+      }
+    }
+    if (!shouldPlay) return;
+    special.rooms.forEach((uid) => {
+      const r = rooms.get(uid);
+      if (!r || r.status !== "connected" || !r.qualities.length || ui.specialPlayers.has(uid)) return;
+      const tile = document.querySelector(`[data-special-tile="${CSS.escape(uid)}"]`);
+      const video = tile?.querySelector("[data-special-video]");
+      const empty = tile?.querySelector("[data-special-video-empty]");
+      const q = wallQuality(r);
+      if (!video || !q) return;
+      const player = makePlayer(video, uid, q, (msg) => {
+        if (ui.specialPlayers.get(uid)?.player !== player) return;
+        killPlayer(player);
+        ui.specialPlayers.delete(uid);
+        ui.playerErrAt.set("special:" + uid, Date.now());
+        video.hidden = true;
+        if (empty) { empty.hidden = false; empty.textContent = "Lỗi phát video: " + msg; }
+      });
+      ui.specialPlayers.set(uid, { player, q });
+      video.hidden = false;
+      if (empty) empty.hidden = true;
+    });
+  }
+
   /** Bật/tắt player cho khớp với tab đang mở & trạng thái phòng (chỉ mở luồng khi cần, đỡ tốn mạng). */
   function syncPlayers() {
     const recentErr = (k) => Date.now() - (ui.playerErrAt.get(k) || 0) < 9000;
@@ -704,6 +1082,7 @@
     const want = r && r.status === "connected" && r.qualities.length && ui.detailWanted;
     if (!want) { if (ui.detailPlayer) stopDetail(r && r.status !== "connected" ? (STATUS_TEXT[r.status] || r.status) : undefined); }
     else if (!ui.detailPlayer || ui.detailPlayer.uid !== r.uid) { if (!recentErr("detail:" + r.uid)) playDetail(); }
+    syncSpecialPlayers();
   }
 
   $("btnPlay").onclick = () => { ui.detailWanted = true; ui.playerErrAt.delete("detail:" + ui.active); playDetail(); };
@@ -807,6 +1186,7 @@
       (s.recent || []).forEach((ev) => storeEvent(r, ev));
       updateTab(r); updateTileStats(r);
       if (ui.active === uid) renderDetail();
+      if (ui.active === SPECIAL_UID && special.rooms.has(uid.toLowerCase())) renderSpecialFeed();
     } catch (_) {}
   }
   $("btnDisconnect").onclick = () => ui.active && api("POST", roomUrl(ui.active, "/disconnect")).catch((err) => toast(err.message, "err"));
@@ -910,6 +1290,7 @@
       (snap.recent || []).forEach((ev) => storeEvent(r, ev));
       rooms.set(r.uid, r);
     });
+    updateSpecialState(s.special_mode || {});
     renderTabs();
     renderWall();
     const want = ui.active || decodeURIComponent(location.hash.slice(1));
@@ -934,7 +1315,9 @@
       stopTile(uid);
       if (ui.detailPlayer?.uid === uid) stopDetail();
       rooms.delete(uid);
+      special.rooms.delete(uid.toLowerCase());
       renderTabs(); removeTile(uid);
+      if (ui.active === SPECIAL_UID) renderSpecialFeed();
       if (ui.active === uid) switchTo("");
       return;
     }
@@ -944,6 +1327,7 @@
       const ev = storeEvent(r, data);
       addMini(r, ev);
       if (isActive) addEventLi(ev);
+      if (ui.active === SPECIAL_UID) appendSpecialEvent(uid, ev);
     } else if (type === "stats") {
       r.stats = data.stats;
       r.top = { gifters: data.top_gifters || [], live: data.live_rank || [] };
@@ -960,9 +1344,11 @@
       if (data.status === "connecting") {
         if (data.resumed) reloadRoom(uid);   // nối tiếp phiên cũ: lấy lại số liệu + feed đã có, không xoá
         else { r.stats = {}; r.top = { gifters: [], live: [] }; r.events = []; r.giftIdx.clear(); }
+        if (ui.active === SPECIAL_UID && special.rooms.has(uid.toLowerCase())) renderSpecialFeed();
       }
       if (data.status === "choose" && (ui.askUntil || 0) > Date.now()) askChoice(uid);
       updateTab(r);
+      renderSpecialRooms();
       if (data.status === "connected") {
         if (tileEl(uid)) updateTile(r);
         else addTile(r);
